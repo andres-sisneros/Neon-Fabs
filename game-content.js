@@ -1,0 +1,1141 @@
+// Game content, tuning tables, and default prototype state. Loaded before app.js.
+const LEGACY_SAVE_PREFIX = "neon-fabs";
+
+const BASE_BATTERY_CAPACITY = 86400;
+const MELD_BATTERY_BONUS = 3600;
+const ROLL_GRAMS = 1;
+const GOLD_PER_GRAM = 1;
+const HOME_CITY_RATE_BONUS = 0.1;
+const MIN_ROUTE_RISK = 2;
+const MAX_ACTIVE_FABS = 3;
+const MARKET_SELLER_NAMES = ["ByteLot", "ChromeBroker", "PatchVendor", "SignalCartel", "NeonKiosk"];
+const MARKET_BUYER_NAMES = ["StreetBuyer", "MeldRunner", "NightDesk", "RelayBuyer", "ScrapDesk"];
+const LORE_TONE = "contract drifters, civic matter, sleeper crews, and machine-made scarcity";
+const STARTER_HOME_CITIES = ["chrome-pier", "orchid"];
+
+const rarityMeta = {
+  green: { label: "Common", weight: 1000, accent: "#78ff88" },
+  blue: { label: "Uncommon", weight: 200, accent: "#24bff2" },
+  gold: { label: "Rare", weight: 100, accent: "#ffd447" },
+  purple: { label: "Epic", weight: 10, accent: "#b46bff" },
+  orange: { label: "Legendary", weight: 1, accent: "#ff9e2d" },
+};
+
+const rarityOrder = ["green", "blue", "gold", "purple", "orange"];
+
+const defaultNoItemWeight = () => Object.values(rarityMeta).reduce((sum, meta) => sum + meta.weight, 0);
+
+const fabTypeLabels = {
+  starter: "Starter Fab",
+  food: "Food Melds",
+  vehicle: "Vehicles",
+  aquatic: "Aquatic Vehicles",
+  boost: "Boosts",
+  nethack: "Nethack Bursts",
+  cyberware: "Cyberware",
+  security: "Security",
+  music: "Music",
+  luxury: "Luxury",
+  equipment: "Equipment",
+  weapons: "Weapons",
+};
+
+const equipmentSlots = [
+  { id: "motherboard", label: "Motherboard" },
+  { id: "extruder", label: "Extruder" },
+  { id: "printBed", label: "Print Bed" },
+  { id: "stepperMotors", label: "Stepper Motors" },
+];
+
+const equipmentTierStats = {
+  green: { tier: "Common", rateBonus: 0.05, value: 180 },
+  blue: { tier: "Uncommon", rateBonus: 0.12, value: 620 },
+  gold: { tier: "Rare", rateBonus: 0.25, value: 1800 },
+  purple: { tier: "Epic", rateBonus: 0.45, value: 5400 },
+  orange: { tier: "Legendary", rateBonus: 0.75, value: 16000 },
+};
+
+const marketCategories = {
+  all: "All",
+  meld: "Meld Components",
+  vehicle: "Vehicles",
+  boost: "Boosts",
+  gear: "Gear",
+  cyberware: "Cyberware",
+};
+
+const fabCatalog = [
+  { type: "starter", label: "Starter Fab", category: "Meld", buyPrice: 1200, rentPrice: 120, rentHours: 168, rate: 12, cities: ["chrome-pier", "orchid"] },
+  { type: "food", label: "Food Meld Fab", category: "Meld", buyPrice: 1500, rentPrice: 150, rentHours: 168, rate: 12, cities: ["orchid", "vanta"] },
+  { type: "vehicle", label: "Vehicle Fab", category: "Route", buyPrice: 1800, rentPrice: 180, rentHours: 168, rate: 12, cities: ["lowline", "chrome-pier", "helix"] },
+  { type: "aquatic", label: "Aquatic Vehicle Fab", category: "Route", buyPrice: 2200, rentPrice: 220, rentHours: 168, rate: 12, cities: ["orchid", "vanta"] },
+  { type: "boost", label: "Boost Fab", category: "Boost", buyPrice: 2400, rentPrice: 240, rentHours: 168, rate: 12, cities: ["chrome-pier", "helix"] },
+  { type: "nethack", label: "Nethack Boost Fab", category: "Boost", buyPrice: 3000, rentPrice: 300, rentHours: 168, rate: 12, cities: ["lowline", "vanta"] },
+  { type: "equipment", label: "Equipment Fab", category: "Gear", buyPrice: 3600, rentPrice: 360, rentHours: 168, rate: 12, cities: ["chrome-pier", "helix"] },
+];
+
+const fabShopCategories = ["all", "Meld", "Route", "Boost", "Gear"];
+
+const defaultContractStats = () => ({
+  outputsCollected: 0,
+  itemsBought: 0,
+  itemsSold: 0,
+  itemsRecycled: 0,
+  meldsFused: 0,
+  equipmentEquipped: 0,
+  boostsUsed: 0,
+  shipmentsSent: 0,
+});
+
+const contractCatalog = [
+  {
+    id: "collect-output-5",
+    chain: "New Operator",
+    group: "1. Fab Operations",
+    title: "First Print Run",
+    description: "Open five Print Bay outputs from any fab in the city you are viewing.",
+    target: 5,
+    metric: "outputsCollected",
+    view: "fabs",
+    reward: { credits: 260 },
+  },
+  {
+    id: "market-sell-3",
+    chain: "New Operator",
+    group: "2. Market",
+    title: "Find Local Demand",
+    description: "Sell three items to local bids. Bulk sales count.",
+    target: 3,
+    metric: "itemsSold",
+    view: "shop",
+    reward: { credits: 300 },
+    requires: ["collect-output-5"],
+  },
+  {
+    id: "recycle-5",
+    chain: "New Operator",
+    group: "3. Inventory",
+    title: "Clear The Bench",
+    description: "Recycle five unwanted items to make room for stronger output.",
+    target: 5,
+    metric: "itemsRecycled",
+    view: "inventory",
+    reward: { credits: 160 },
+    requires: ["market-sell-3"],
+  },
+  {
+    id: "market-buy-1",
+    chain: "New Operator",
+    group: "4. Market",
+    title: "Source A Missing Part",
+    description: "Buy one item from any city market listing.",
+    target: 1,
+    metric: "itemsBought",
+    view: "shop",
+    reward: { credits: 180 },
+    requires: ["recycle-5"],
+  },
+  {
+    id: "fuse-first-meld",
+    chain: "New Operator",
+    group: "5. Melds",
+    title: "Fuse A Stable Pattern",
+    description: "Create one meld in your home city.",
+    target: 1,
+    metric: "meldsFused",
+    view: "melds",
+    reward: { credits: 550, chips: 1 },
+    requires: ["market-buy-1"],
+  },
+  {
+    id: "send-first-shipment",
+    chain: "New Operator",
+    group: "6. Dispatch",
+    title: "Open A Route",
+    description: "Send one cargo shipment from Dispatch.",
+    target: 1,
+    metric: "shipmentsSent",
+    view: "shipments",
+    reward: { credits: 600 },
+    requires: ["fuse-first-meld"],
+  },
+  {
+    id: "second-fab-slot",
+    chain: "New Operator",
+    group: "7. Expansion",
+    title: "Run A Second Fab",
+    description: "Own or rent a second active fab when you are ready to expand.",
+    target: 2,
+    view: "fab-shop",
+    reward: { credits: 420 },
+    requires: ["send-first-shipment"],
+    progress: () => state.fabs.length,
+  },
+  {
+    id: "equip-first-gear",
+    chain: "New Operator",
+    group: "8. Fabs",
+    title: "Tune A Machine",
+    description: "Equip one gear upgrade onto a fab.",
+    target: 1,
+    metric: "equipmentEquipped",
+    view: "fabs",
+    reward: { credits: 450 },
+    requires: ["second-fab-slot"],
+  },
+];
+
+const defaultBattleSim = () => ({
+  from: "lowline",
+  to: "chrome-pier",
+  attackerVehicle: "Uncommon Interceptor",
+  attackerSupport1: "Common Runner",
+  attackerSupport2: "none",
+  defenderVehicle: "Common Freighter",
+  defenderEscort1: "Common Guardian",
+  defenderEscort2: "none",
+  cargo: "Common Starter Component A",
+  cargoUnits: 2,
+  attackerRole: "routejack",
+  defenderRole: "merchant",
+  lootPolicy: "upgrade",
+  attackerTactic: "snatch",
+  defenderTactic: "protect",
+  maxTicks: 120,
+  runs: 250,
+  attackBonus: 0,
+  defenseBonus: 0,
+  modules: defaultBattleModules(),
+});
+
+function defaultBattleModules() {
+  return {
+    attackerVehicle: { standard1: "exhaust-hack", standard2: "seeker-array", overdrive: "breach-lance" },
+    attackerSupport1: { standard1: "corrosion-payload", standard2: "none", overdrive: "lockdown-net" },
+    attackerSupport2: { standard1: "none", standard2: "none", overdrive: "none" },
+    defenderVehicle: { standard1: "umbrella-shield", standard2: "patch-cloud", overdrive: "evasive-core" },
+    defenderEscort1: { standard1: "cargo-bulwark", standard2: "retaliation-coil", overdrive: "signal-bugle" },
+    defenderEscort2: { standard1: "none", standard2: "none", overdrive: "none" },
+  };
+}
+
+function defaultBattleBuilds() {
+  const buildA = cloneBattleSettings(defaultBattleSim());
+  const buildB = cloneBattleSettings({
+    ...defaultBattleSim(),
+    attackerTactic: "disable",
+    defenderTactic: "evade",
+    modules: {
+      ...defaultBattleModules(),
+      attackerVehicle: { standard1: "seeker-array", standard2: "exhaust-hack", overdrive: "breach-lance" },
+      defenderVehicle: { standard1: "umbrella-shield", standard2: "patch-cloud", overdrive: "evasive-core" },
+    },
+  });
+  return {
+    a: { name: "Build A", settings: buildA, savedAt: null },
+    b: { name: "Build B", settings: buildB, savedAt: null },
+  };
+}
+
+const battleUnitModuleSlots = [
+  { key: "attackerVehicle", label: "Attacker Lead" },
+  { key: "attackerSupport1", label: "Attacker Support 1" },
+  { key: "attackerSupport2", label: "Attacker Support 2" },
+  { key: "defenderVehicle", label: "Cargo Vehicle" },
+  { key: "defenderEscort1", label: "Escort 1" },
+  { key: "defenderEscort2", label: "Escort 2" },
+];
+
+const routeModuleCatalog = [
+  {
+    id: "cargo-bulwark",
+    label: "Cargo Defense Module",
+    type: "standard",
+    summary: "Adds integrity, starting shield, and Brave chance for escort protection.",
+    integrity: 18,
+    startShield: 10,
+    braveBonus: 14,
+  },
+  {
+    id: "exhaust-hack",
+    label: "Initiative Jam Module",
+    type: "standard",
+    summary: "Reduces target initiative and weakens the target's next hit.",
+    impact: 2,
+    exhaustInitiative: 16,
+    exhaustImpactDown: 4,
+  },
+  {
+    id: "patch-cloud",
+    label: "Repair Module",
+    type: "standard",
+    summary: "Repairs the most damaged ally after attacks.",
+    integrity: 8,
+    healAllyOnAttack: 6,
+  },
+  {
+    id: "seeker-array",
+    label: "Targeting Module",
+    type: "standard",
+    summary: "Targets the weakest enemy and hits damaged units harder.",
+    speed: 3,
+    targetLowestHp: true,
+    damageVsDamaged: 0.35,
+  },
+  {
+    id: "retaliation-coil",
+    label: "Counterattack Module",
+    type: "standard",
+    summary: "Damages attackers back when this unit takes damage.",
+    integrity: 10,
+    retaliation: 7,
+  },
+  {
+    id: "corrosion-payload",
+    label: "Damage Over Time Module",
+    type: "standard",
+    summary: "Applies damage-over-time stacks.",
+    impact: 1,
+    poisonStacks: 2,
+  },
+  {
+    id: "umbrella-shield",
+    label: "Shield Module",
+    type: "standard",
+    summary: "Gives a chance to reduce incoming damage.",
+    integrity: 14,
+    mitigationChance: 38,
+    mitigationFlat: 9,
+  },
+  {
+    id: "signal-bugle",
+    label: "Team Buff Overdrive",
+    type: "overdrive",
+    summary: "Gives allies impact and shield.",
+    teamImpactBuff: 2,
+    teamShield: 6,
+  },
+  {
+    id: "breach-lance",
+    label: "Cargo Strike Overdrive",
+    type: "overdrive",
+    summary: "Hits cargo directly and ignores Brave.",
+    breach: true,
+  },
+  {
+    id: "field-forge",
+    label: "Stat Buff Overdrive",
+    type: "overdrive",
+    summary: "Upgrades one ally's route stats for the run.",
+    forge: true,
+  },
+  {
+    id: "black-box",
+    label: "Random Effect Overdrive",
+    type: "overdrive",
+    summary: "Rolls one powerful random effect at battle start.",
+    blackBox: true,
+  },
+  {
+    id: "evasive-core",
+    label: "Escape Overdrive",
+    type: "overdrive",
+    summary: "Gives cargo more escape progress and shield.",
+    escapeBonus: 28,
+    shieldBonus: 12,
+  },
+  {
+    id: "lockdown-net",
+    label: "Slow Overdrive",
+    type: "overdrive",
+    summary: "Slows and delays every enemy.",
+    slowAll: 5,
+    initiativeDownAll: 24,
+  },
+];
+
+const battleAttackerTactics = {
+  snatch: "Hit Cargo First",
+  disable: "Disable Escorts",
+  scramble: "Target Fastest",
+};
+
+const battleDefenderTactics = {
+  protect: "Protect Cargo",
+  counter: "Counter Lead",
+  evade: "Prioritize Escape",
+};
+
+const districts = [
+  {
+    id: "lowline",
+    name: "Lowline",
+    fare: 0,
+    priceBias: 1,
+    inventoryLimit: 120,
+    map: { x: 28, y: 67 },
+    fabs: ["vehicle", "nethack"],
+    routes: [
+      { to: "chrome-pier", miles: 72 },
+      { to: "orchid", miles: 105 },
+    ],
+    description: "A stacked transit ward where first-run operators start with cheap space and noisy markets.",
+  },
+  {
+    id: "chrome-pier",
+    name: "Chrome Pier",
+    fare: 45,
+    priceBias: 1.18,
+    inventoryLimit: 96,
+    map: { x: 43, y: 35 },
+    fabs: ["starter", "vehicle", "boost", "equipment"],
+    routes: [
+      { to: "lowline", miles: 72 },
+      { to: "vanta", miles: 156 },
+      { to: "helix", miles: 190 },
+    ],
+    description: "Port-side chop shops and container bazaars. Good for route gear once transport exists.",
+  },
+  {
+    id: "vanta",
+    name: "Vanta Arcology",
+    fare: 65,
+    priceBias: 1.34,
+    inventoryLimit: 88,
+    map: { x: 76, y: 28 },
+    fabs: ["food", "aquatic", "nethack"],
+    routes: [
+      { to: "chrome-pier", miles: 156 },
+      { to: "orchid", miles: 220, type: "water" },
+    ],
+    description: "A sealed tower market with premium buyers, tight storage, and expensive everything.",
+  },
+  {
+    id: "orchid",
+    name: "Orchid Sprawl",
+    fare: 80,
+    priceBias: 1.52,
+    inventoryLimit: 108,
+    map: { x: 20, y: 30 },
+    fabs: ["starter", "food", "aquatic"],
+    routes: [
+      { to: "lowline", miles: 105 },
+      { to: "vanta", miles: 220, type: "water" },
+    ],
+    description: "Night markets, bootleg labels, and fashion stalls spread under magenta rain shields.",
+  },
+  {
+    id: "helix",
+    name: "Helix Quay",
+    fare: 100,
+    priceBias: 1.76,
+    inventoryLimit: 92,
+    map: { x: 72, y: 70 },
+    fabs: ["equipment", "boost", "vehicle"],
+    routes: [{ to: "chrome-pier", miles: 190 }],
+    description: "An industrial waterfront where useful fabs will eventually become dangerous business.",
+  },
+];
+
+const qualityLabel = (rarity) => rarityMeta[rarity].label;
+const componentLetters = ["A", "B", "C"];
+const componentIcons = ["poly", "chip", "lens"];
+const componentBaseValues = { green: 5, blue: 24, gold: 130, purple: 620, orange: 2600 };
+
+function makeComponentItems(prefix, use) {
+  return rarityOrder.flatMap((rarity) => componentLetters.map((letter, index) => ({
+    name: `${qualityLabel(rarity)} ${prefix} Component ${letter}`,
+    iconName: componentIcons[index],
+    rarity,
+    value: componentBaseValues[rarity] + index,
+    description: `${qualityLabel(rarity)} ${prefix.toLowerCase()} meld component ${letter}. Placeholder name for design clarity.`,
+    use,
+  })));
+}
+
+const starterItems = makeComponentItems("Starter", "Starter meld component.");
+const foodItems = makeComponentItems("Food", "Food meld component.");
+
+const vehicleClassLabels = {
+  runner: "Runner",
+  freighter: "Freighter",
+  interceptor: "Interceptor",
+  guardian: "Guardian",
+};
+
+const vehicleClassProfileBase = {
+  runner: 22,
+  freighter: 58,
+  interceptor: 36,
+  guardian: 46,
+};
+
+const vehicleClassSensorBase = {
+  runner: 24,
+  freighter: 14,
+  interceptor: 48,
+  guardian: 30,
+};
+
+function vehicleProfileForClass(classId, tierIndex, routeMode) {
+  const waterAdjustment = routeMode === "water" ? 4 : 0;
+  return Math.max(8, Math.min(80, (vehicleClassProfileBase[classId] || 40) + waterAdjustment - tierIndex * 3));
+}
+
+function vehicleSensorForClass(classId, tierIndex, routeMode) {
+  const waterAdjustment = routeMode === "water" ? 2 : 0;
+  return Math.max(5, Math.min(80, (vehicleClassSensorBase[classId] || 24) + waterAdjustment + tierIndex * 5));
+}
+
+function profileBand(score) {
+  if (score <= 28) return "Low";
+  if (score <= 48) return "Medium";
+  return "High";
+}
+
+const landVehicleClassDefs = [
+  {
+    id: "runner",
+    label: "Runner",
+    description: "Fast route craft for light cargo, scouting, and evasive shipping work.",
+    tiers: [
+      ["Common Runner", "tool", 70, 2, 38, 5, "Common Runner placeholder: fast, light cargo, low durability."],
+      ["Uncommon Runner", "cell", 260, 3, 52, 8, "Uncommon Runner placeholder: faster light transport."],
+      ["Rare Runner", "data", 860, 4, 62, 11, "Rare Runner placeholder: fast transport with a flexible small hold."],
+      ["Epic Runner", "lens", 2800, 5, 78, 16, "Epic Runner placeholder: very fast transport."],
+      ["Legendary Runner", "data", 8200, 6, 96, 24, "Legendary Runner placeholder: fastest runner with modest cargo."],
+    ],
+  },
+  {
+    id: "freighter",
+    label: "Freighter",
+    description: "Cargo-first vehicles with more slots, slower speeds, and steadier route frames.",
+    tiers: [
+      ["Common Freighter", "tool", 90, 6, 26, 7, "Common Freighter placeholder: slow cargo platform with a larger hold."],
+      ["Uncommon Freighter", "chip", 320, 8, 36, 10, "Uncommon Freighter placeholder: better speed and durability."],
+      ["Rare Freighter", "chip", 900, 10, 48, 14, "Rare Freighter placeholder: reliable mid-tier cargo hauler."],
+      ["Epic Freighter", "poly", 3100, 12, 54, 19, "Epic Freighter placeholder: heavy cargo route vehicle."],
+      ["Legendary Freighter", "data", 9000, 16, 68, 28, "Legendary Freighter placeholder: premium high-capacity cargo hauler."],
+    ],
+  },
+  {
+    id: "interceptor",
+    label: "Interceptor",
+    description: "Aggressive pursuit frames for Routejacks, interdiction, and theft-focused route builds.",
+    tiers: [
+      ["Common Interceptor", "tool", 85, 2, 42, 4, "Common Interceptor placeholder: attack-focused with a small loot hold."],
+      ["Uncommon Interceptor", "cell", 300, 3, 56, 7, "Uncommon Interceptor placeholder: faster attack vehicle."],
+      ["Rare Interceptor", "lens", 980, 4, 68, 10, "Rare Interceptor placeholder: stronger pursuit stats."],
+      ["Epic Interceptor", "data", 3300, 5, 84, 14, "Epic Interceptor placeholder: high-speed raider with extra loot space."],
+      ["Legendary Interceptor", "chip", 9800, 6, 104, 22, "Legendary Interceptor placeholder: top pursuit vehicle."],
+    ],
+  },
+  {
+    id: "guardian",
+    label: "Guardian",
+    description: "Defensive convoy frames for escorts, guarded hauls, and cargo protection.",
+    tiers: [
+      ["Common Guardian", "tool", 80, 2, 30, 8, "Common Guardian placeholder: defensive escort."],
+      ["Uncommon Guardian", "poly", 280, 3, 40, 12, "Uncommon Guardian placeholder: better escort durability."],
+      ["Rare Guardian", "chip", 920, 4, 46, 17, "Rare Guardian placeholder: defensive escort with useful cargo room."],
+      ["Epic Guardian", "cell", 3000, 5, 58, 22, "Epic Guardian placeholder: durable convoy support."],
+      ["Legendary Guardian", "data", 8800, 6, 70, 32, "Legendary Guardian placeholder: top defensive escort."],
+    ],
+  },
+];
+
+const aquaticVehicleClassDefs = [
+  {
+    id: "runner",
+    label: "Water Runner",
+    description: "Fast water craft for light cargo, canal scouting, and evasive flood-lane work.",
+    tiers: [
+      ["Common Water Runner", "tool", 120, 2, 28, 5, "Common Water Runner placeholder: light water transport."],
+      ["Uncommon Water Runner", "cell", 360, 3, 38, 8, "Uncommon Water Runner placeholder: faster light water transport."],
+      ["Rare Water Runner", "data", 1150, 4, 48, 11, "Rare Water Runner placeholder: light water transport with a flexible hold."],
+      ["Epic Water Runner", "lens", 3400, 5, 60, 17, "Epic Water Runner placeholder: very fast water transport."],
+      ["Legendary Water Runner", "data", 9600, 6, 76, 25, "Legendary Water Runner placeholder: top water runner."],
+    ],
+  },
+  {
+    id: "freighter",
+    label: "Water Freighter",
+    description: "Slow, steady water cargo platforms with larger holds.",
+    tiers: [
+      ["Common Water Freighter", "tool", 130, 6, 20, 7, "Common Water Freighter placeholder: slow cargo hull with a larger hold."],
+      ["Uncommon Water Freighter", "poly", 390, 8, 30, 10, "Uncommon Water Freighter placeholder: better water cargo frame."],
+      ["Rare Water Freighter", "chip", 1100, 10, 42, 13, "Rare Water Freighter placeholder: reliable water cargo hauler."],
+      ["Epic Water Freighter", "cell", 3600, 12, 50, 20, "Epic Water Freighter placeholder: heavy water cargo platform."],
+      ["Legendary Water Freighter", "data", 10400, 16, 62, 30, "Legendary Water Freighter placeholder: premium high-capacity water hauler."],
+    ],
+  },
+  {
+    id: "interceptor",
+    label: "Water Interceptor",
+    description: "Pursuit hulls for water-route interdiction and theft-focused route builds.",
+    tiers: [
+      ["Common Water Interceptor", "tool", 125, 2, 34, 4, "Common Water Interceptor placeholder: attack-focused water vehicle with a small loot hold."],
+      ["Uncommon Water Interceptor", "cell", 420, 3, 44, 7, "Uncommon Water Interceptor placeholder: faster water pursuit."],
+      ["Rare Water Interceptor", "lens", 1300, 4, 56, 11, "Rare Water Interceptor placeholder: stronger water pursuit stats."],
+      ["Epic Water Interceptor", "data", 3900, 5, 68, 15, "Epic Water Interceptor placeholder: high-speed water raider with extra loot space."],
+      ["Legendary Water Interceptor", "chip", 11200, 6, 84, 24, "Legendary Water Interceptor placeholder: top water pursuit vehicle."],
+    ],
+  },
+  {
+    id: "guardian",
+    label: "Water Guardian",
+    description: "Protective hulls for defended shipments, escorted hauls, and convoy pressure.",
+    tiers: [
+      ["Common Water Guardian", "tool", 115, 2, 24, 8, "Common Water Guardian placeholder: defensive water escort."],
+      ["Uncommon Water Guardian", "poly", 380, 3, 34, 12, "Uncommon Water Guardian placeholder: better water escort durability."],
+      ["Rare Water Guardian", "chip", 1180, 4, 42, 17, "Rare Water Guardian placeholder: defensive water escort with useful cargo room."],
+      ["Epic Water Guardian", "cell", 3700, 5, 52, 22, "Epic Water Guardian placeholder: durable water convoy support."],
+      ["Legendary Water Guardian", "data", 10800, 6, 66, 32, "Legendary Water Guardian placeholder: top water guardian."],
+    ],
+  },
+];
+
+function vehicleItemsFromClasses(classDefs, routeMode) {
+  return classDefs.flatMap((classDef) => classDef.tiers.map(([name, iconName, value, capacity, mph, durability, description], tierIndex) => {
+    const profile = vehicleProfileForClass(classDef.id, tierIndex, routeMode);
+    const sensor = vehicleSensorForClass(classDef.id, tierIndex, routeMode);
+    return {
+      name,
+      iconName,
+      rarity: rarityOrder[tierIndex],
+      value,
+      capacity,
+      mph,
+      durability,
+      profile,
+      sensor,
+      routeMode,
+      vehicleClass: classDef.id,
+      printPattern: classDef.id,
+      classLabel: classDef.label,
+      battleRole: classDef.id,
+      description,
+      use: `${classDef.label} class. Moves up to ${capacity} item${capacity === 1 ? "" : "s"} along ${routeMode} routes. ${profileBand(profile)} profile, ${sensor} sensor.`,
+    };
+  }));
+}
+
+const vehicleItems = vehicleItemsFromClasses(landVehicleClassDefs, "land");
+const aquaticVehicleItems = vehicleItemsFromClasses(aquaticVehicleClassDefs, "water");
+
+const starterFab = {
+  label: "Starter Fab",
+  group: "Starter Components",
+  accent: "#24bff2",
+  items: starterItems,
+};
+
+const foodFab = {
+  label: "Food Meld Fab",
+  group: "Food Components",
+  accent: "#35d6b4",
+  items: foodItems,
+};
+
+const vehicleFab = {
+  label: "Vehicle Fab",
+  group: "Route Vehicles",
+  accent: "#78ff88",
+  items: vehicleItems,
+};
+
+const aquaticFab = {
+  label: "Aquatic Vehicle Fab",
+  group: "Water Route Vehicles",
+  accent: "#24bff2",
+  items: aquaticVehicleItems,
+};
+
+const boostTiers = {
+  green: { tier: "Common", value: 80, batteryHours: 1, filamentHours: 4, filamentBoost: 0.12, scannerHours: 2 },
+  blue: { tier: "Uncommon", value: 220, batteryHours: 3, filamentHours: 8, filamentBoost: 0.22, scannerHours: 4 },
+  gold: { tier: "Rare", value: 780, batteryHours: 8, filamentHours: 12, filamentBoost: 0.38, scannerHours: 8 },
+  purple: { tier: "Epic", value: 2400, batteryHours: 18, filamentHours: 18, filamentBoost: 0.6, scannerHours: 12 },
+  orange: { tier: "Legendary", value: 7600, batteryHours: 36, filamentHours: 24, filamentBoost: 0.9, scannerHours: 24 },
+};
+
+const boostItems = rarityOrder.flatMap((rarity) => {
+  const tier = boostTiers[rarity];
+  return [
+    {
+      name: `${tier.tier} Battery Extension`,
+      iconName: "cell",
+      rarity,
+      value: tier.value,
+      description: `${tier.tier} Battery Extension placeholder. Permanently extends the operator battery by ${tier.batteryHours} hour${tier.batteryHours === 1 ? "" : "s"}.`,
+      use: `Consumable: permanently adds +${tier.batteryHours}h battery capacity and fills that added charge.`,
+      effect: "batteryCap",
+      printPattern: "batteryCap",
+      amount: tier.batteryHours * 3600,
+    },
+    {
+      name: `${tier.tier} Filament`,
+      iconName: "poly",
+      rarity,
+      value: Math.round(tier.value * 1.35),
+      description: `${tier.tier} Filament placeholder. Pushes active fabs toward better rarity output for ${tier.filamentHours} hour${tier.filamentHours === 1 ? "" : "s"}.`,
+      use: `Consumable: non-stacking +${Math.round(tier.filamentBoost * 100)}% higher-rarity pressure for ${tier.filamentHours}h.`,
+      effect: "filament",
+      printPattern: "filament",
+      amount: tier.filamentBoost,
+      duration: tier.filamentHours * 3600,
+    },
+    {
+      name: `${tier.tier} Scanner`,
+      iconName: "data",
+      rarity,
+      value: Math.round(tier.value * 1.15),
+      description: `${tier.tier} Scanner placeholder. Reveals hidden NPC route pressure around the city you are viewing for ${tier.scannerHours} hour${tier.scannerHours === 1 ? "" : "s"}.`,
+      use: `Consumable: reveals hidden NPC route statistics from the current city for ${tier.scannerHours}h.`,
+      effect: "scanner",
+      printPattern: "scanner",
+      amount: tier.scannerHours * 3600,
+    },
+  ];
+});
+
+const nethackBurstTiers = {
+  green: { tier: "Common", value: 140, grams: 100 },
+  blue: { tier: "Uncommon", value: 460, grams: 500 },
+  gold: { tier: "Rare", value: 1600, grams: 2000 },
+  purple: { tier: "Epic", value: 5200, grams: 7500 },
+  orange: { tier: "Legendary", value: 16000, grams: 20000 },
+};
+
+const nethackItems = rarityOrder.map((rarity) => {
+  const tier = nethackBurstTiers[rarity];
+  return {
+    name: `${tier.tier} Gram Burst`,
+    iconName: "data",
+    rarity,
+    value: tier.value,
+    description: `${tier.tier} Gram Burst placeholder. Instantly processes ${tier.grams.toLocaleString()} grams of pending fab work.`,
+    use: `Consumable: apply to any owned fab to instantly run ${tier.grams.toLocaleString()}g of rolls on that fab.`,
+    effect: "fabBurst",
+    printPattern: "fabBurst",
+    amount: tier.grams,
+  };
+});
+
+const boostFab = {
+  label: "Boost Fab",
+  group: "Consumables",
+  accent: "#ffd447",
+  items: boostItems,
+};
+
+const nethackFab = {
+  label: "Nethack Boost Fab",
+  group: "Burst Scripts",
+  accent: "#ff4da6",
+  items: nethackItems,
+};
+
+const equipmentNameParts = {
+  motherboard: ["Common Logic Board", "Uncommon Logic Board", "Rare Logic Board", "Epic Logic Board", "Legendary Logic Board"],
+  extruder: ["Common Extruder", "Uncommon Extruder", "Rare Extruder", "Epic Extruder", "Legendary Extruder"],
+  printBed: ["Common Print Bed", "Uncommon Print Bed", "Rare Print Bed", "Epic Print Bed", "Legendary Print Bed"],
+  stepperMotors: ["Common Stepper Motors", "Uncommon Stepper Motors", "Rare Stepper Motors", "Epic Stepper Motors", "Legendary Stepper Motors"],
+};
+
+const equipmentIconBySlot = {
+  motherboard: "chip",
+  extruder: "tool",
+  printBed: "poly",
+  stepperMotors: "cell",
+};
+
+const equipmentItems = equipmentSlots.flatMap((slot) => rarityOrder.map((rarity, tierIndex) => {
+  const tier = equipmentTierStats[rarity];
+  return {
+    name: equipmentNameParts[slot.id][tierIndex],
+    iconName: equipmentIconBySlot[slot.id],
+    rarity,
+    value: tier.value,
+    equipmentSlot: slot.id,
+    printPattern: slot.id,
+    rateBonus: tier.rateBonus,
+    description: `${tier.tier} ${slot.label} placeholder. Equip it to increase a fab's grams/hour.`,
+    use: `Equip to a fab's ${slot.label} slot for +${Math.round(tier.rateBonus * 100)}% grams/hour on that fab.`,
+  };
+}));
+
+const equipmentFab = {
+  label: "Equipment Fab",
+  group: "Gear",
+  accent: "#b46bff",
+  items: equipmentItems,
+};
+
+const roles = {
+  drifter: {
+    label: "Drifter",
+    unlock: 0,
+    text: "Independent operator who squeezes extra credits from fab credit mode.",
+    benefit: "+20% credits from fab credit output.",
+    fabCreditBonus: 0.2,
+  },
+  merchant: {
+    label: "Merchant",
+    unlock: 1,
+    text: "Primary shipping profession. Merchants build convoys and move cargo between cities.",
+    benefit: "+15% freight payout, +5% credits when selling into buy orders, and +20% shipment speed.",
+    marketSellBonus: 0.05,
+    freightBonus: 0.15,
+    shipmentSpeedBonus: 0.2,
+  },
+  routejack: {
+    label: "Routejack",
+    unlock: 3,
+    text: "Route raider who launches jobs against designed NPC cargo targets.",
+    benefit: "Can launch route raids. Stolen cargo is limited by vehicle hold capacity.",
+    interceptBonus: 10,
+  },
+  fabricator: {
+    label: "Fabricator",
+    unlock: 4,
+    text: "Machine tender who gets more reliable output from non-starter fabs.",
+    benefit: "+10% non-starter fab rate.",
+    fabRateBonus: 0.1,
+  },
+};
+
+const melds = [
+  {
+    name: "Common Starter Meld",
+    type: "starter",
+    rarity: "green",
+    recipe: { "Common Starter Component A": 2, "Common Starter Component B": 1, "Common Starter Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Uncommon Starter Meld",
+    type: "starter",
+    rarity: "blue",
+    recipe: { "Uncommon Starter Component A": 1, "Uncommon Starter Component B": 1, "Uncommon Starter Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Rare Starter Meld",
+    type: "starter",
+    rarity: "gold",
+    recipe: { "Rare Starter Component A": 1, "Rare Starter Component B": 1, "Rare Starter Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Epic Starter Meld",
+    type: "starter",
+    rarity: "purple",
+    recipe: { "Epic Starter Component A": 1, "Epic Starter Component B": 1, "Epic Starter Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Legendary Starter Meld",
+    type: "starter",
+    rarity: "orange",
+    recipe: { "Legendary Starter Component A": 1, "Legendary Starter Component B": 1, "Legendary Starter Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Common Food Meld",
+    type: "food",
+    rarity: "green",
+    recipe: { "Common Food Component A": 2, "Common Food Component B": 1, "Common Food Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Uncommon Food Meld",
+    type: "food",
+    rarity: "blue",
+    recipe: { "Uncommon Food Component A": 1, "Uncommon Food Component B": 1, "Uncommon Food Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Rare Food Meld",
+    type: "food",
+    rarity: "gold",
+    recipe: { "Rare Food Component A": 1, "Rare Food Component B": 1, "Rare Food Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Epic Food Meld",
+    type: "food",
+    rarity: "purple",
+    recipe: { "Epic Food Component A": 1, "Epic Food Component B": 1, "Epic Food Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+  {
+    name: "Legendary Food Meld",
+    type: "food",
+    rarity: "orange",
+    recipe: { "Legendary Food Component A": 1, "Legendary Food Component B": 1, "Legendary Food Component C": 1 },
+    bonus: "Adds +1 hour battery capacity.",
+  },
+];
+
+const starterPrintPatternDefs = [
+  {
+    id: "starter-a",
+    label: "Starter Component A",
+    description: "Prints the A component for Starter Melds across all rarity tiers.",
+    itemNames: ["Common Starter Component A", "Uncommon Starter Component A", "Rare Starter Component A", "Epic Starter Component A", "Legendary Starter Component A"],
+  },
+  {
+    id: "starter-b",
+    label: "Starter Component B",
+    description: "Prints the B component for Starter Melds across all rarity tiers.",
+    itemNames: ["Common Starter Component B", "Uncommon Starter Component B", "Rare Starter Component B", "Epic Starter Component B", "Legendary Starter Component B"],
+  },
+  {
+    id: "starter-c",
+    label: "Starter Component C",
+    description: "Prints the C component for Starter Melds across all rarity tiers.",
+    itemNames: ["Common Starter Component C", "Uncommon Starter Component C", "Rare Starter Component C", "Epic Starter Component C", "Legendary Starter Component C"],
+  },
+];
+
+const foodPrintPatternDefs = [
+  {
+    id: "food-a",
+    label: "Food Component A",
+    description: "Prints the A component for Food Melds across all rarity tiers.",
+    itemNames: ["Common Food Component A", "Uncommon Food Component A", "Rare Food Component A", "Epic Food Component A", "Legendary Food Component A"],
+  },
+  {
+    id: "food-b",
+    label: "Food Component B",
+    description: "Prints the B component for Food Melds across all rarity tiers.",
+    itemNames: ["Common Food Component B", "Uncommon Food Component B", "Rare Food Component B", "Epic Food Component B", "Legendary Food Component B"],
+  },
+  {
+    id: "food-c",
+    label: "Food Component C",
+    description: "Prints the C component for Food Melds across all rarity tiers.",
+    itemNames: ["Common Food Component C", "Uncommon Food Component C", "Rare Food Component C", "Epic Food Component C", "Legendary Food Component C"],
+  },
+];
+
+function itemsFromNames(itemNames) {
+  const catalog = allItems();
+  return itemNames.map((name) => catalog.find((item) => item.name === name)).filter(Boolean);
+}
+
+function itemPatternFromNames(pattern) {
+  return {
+    id: pattern.id,
+    label: pattern.label,
+    description: pattern.description,
+    items: itemsFromNames(pattern.itemNames),
+  };
+}
+
+function withRandomPrintPattern(patterns) {
+  const uniqueItems = new Map();
+  patterns.forEach((pattern) => {
+    (pattern.items || []).forEach((item) => {
+      if (!uniqueItems.has(item.name)) uniqueItems.set(item.name, item);
+    });
+  });
+  if (patterns.length <= 1) return patterns;
+  return [
+    {
+      id: "random",
+      label: "Random",
+      description: "Prints every pattern in this fab's pool. Rarity decides quality; matching tier items are chosen at random.",
+      items: [...uniqueItems.values()],
+    },
+    ...patterns,
+  ];
+}
+
+function printPatternsForFabType(type) {
+  if (type === "starter") return withRandomPrintPattern(starterPrintPatternDefs.map(itemPatternFromNames));
+  if (type === "food") return withRandomPrintPattern(foodPrintPatternDefs.map(itemPatternFromNames));
+  if (type === "vehicle") {
+    return withRandomPrintPattern(landVehicleClassDefs.map((classDef) => ({
+      id: classDef.id,
+      label: classDef.label,
+      description: `${classDef.description} Your fab prints this class only; rarity decides the frame quality.`,
+      items: vehicleItems.filter((item) => item.vehicleClass === classDef.id),
+    })));
+  }
+  if (type === "aquatic") {
+    return withRandomPrintPattern(aquaticVehicleClassDefs.map((classDef) => ({
+      id: classDef.id,
+      label: classDef.label,
+      description: `${classDef.description} Your fab prints this hull class only; rarity decides the frame quality.`,
+      items: aquaticVehicleItems.filter((item) => item.vehicleClass === classDef.id),
+    })));
+  }
+  if (type === "boost") {
+    return withRandomPrintPattern([
+      {
+        id: "batteryCap",
+        label: "Battery Extension",
+        description: "Print stackable power sleeves that permanently increase max battery capacity.",
+        items: boostItems.filter((item) => item.effect === "batteryCap"),
+      },
+      {
+        id: "filament",
+        label: "Filament",
+        description: "Print temporary quality feedstock that pushes active fabs toward higher rarity output.",
+        items: boostItems.filter((item) => item.effect === "filament"),
+      },
+      {
+        id: "scanner",
+        label: "Scanner",
+        description: "Print route-sensing wafers for reading patrol pressure around the current city.",
+        items: boostItems.filter((item) => item.effect === "scanner"),
+      },
+    ]);
+  }
+  if (type === "nethack") {
+    return [{
+      id: "fabBurst",
+      label: "Gram Burst",
+      description: "Print one-use payloads that force a chosen fab to process grams instantly.",
+      items: nethackItems,
+    }];
+  }
+  if (type === "equipment") {
+    return withRandomPrintPattern(equipmentSlots.map((slot) => ({
+      id: slot.id,
+      label: slot.label,
+      description: `Print ${slot.label.toLowerCase()} upgrades only. Better quality parts give stronger grams/hour bonuses.`,
+      items: equipmentItems.filter((item) => item.equipmentSlot === slot.id),
+    })));
+  }
+  return [];
+}
+
+function defaultPrintPattern(type) {
+  return printPatternsForFabType(type)[0]?.id || "default";
+}
+
+function isValidPrintPattern(type, patternId) {
+  return printPatternsForFabType(type).some((pattern) => pattern.id === patternId);
+}
+
+function printPatternForFab(fab) {
+  const patterns = printPatternsForFabType(fab?.type || "starter");
+  if (!patterns.length) {
+    return {
+      id: "default",
+      label: "Full Output Pool",
+      description: "This fab has no specialized pattern yet.",
+      items: fabDefinition(fab?.type || "starter").items || [],
+    };
+  }
+  return patterns.find((pattern) => pattern.id === fab.printPattern) || patterns[0];
+}
+
+function fabOutputItems(fab) {
+  return printPatternForFab(fab).items || [];
+}
+
+function fabPatternLabel(fab) {
+  return printPatternForFab(fab).label;
+}
+
+const defaultState = () => ({
+  player: "Operator",
+  credits: 0,
+  chips: 1,
+  district: "chrome-pier",
+  homeCity: "chrome-pier",
+  homeChosen: false,
+  role: "drifter",
+  activeView: "profile",
+  viewHistory: [],
+  selectedMeldType: "starter",
+  marketCategory: "all",
+  marketSearch: "",
+  marketRarity: "all",
+  marketSort: "ask",
+  marketShowEmpty: false,
+  marketWatchOnly: false,
+  marketWatchlist: [],
+  marketMeldTarget: "",
+  inventorySearch: "",
+  inventoryCategory: "all",
+  inventoryRarity: "all",
+  inventoryBulkRarity: "green",
+  inventoryProtectMelds: true,
+  pendingConfirm: null,
+  actionSheet: null,
+  dispatchNotice: null,
+  printBayNotice: null,
+  fabShopCategory: "all",
+  fabShopScope: "current",
+  fabOutputHistory: {},
+  contractStats: defaultContractStats(),
+  claimedContracts: [],
+  fuseAnimation: null,
+  selectedFabId: "fab-1",
+  activeEquipmentSlot: "motherboard",
+  selectedItem: "Common Starter Component A",
+  shipmentCargo: "Common Starter Component A",
+  shipmentCargoQty: 1,
+  dispatchCargoSearch: "",
+  shipmentVehicle: "Common Runner",
+  shipmentEscort: "none",
+  shipmentDestination: "lowline",
+  pvpRoute: "lowline",
+  pvpVehicle: "Common Runner",
+  pvpSupport1: "none",
+  pvpSupport2: "none",
+  pvpLootPolicy: "upgrade",
+  routejackTactic: "snatch",
+  battleSim: defaultBattleSim(),
+  battleSimResult: null,
+  battleReplay: null,
+  battleBuilds: defaultBattleBuilds(),
+  battleComparisonResult: null,
+  routeBattles: [],
+  selectedRouteBattleId: null,
+  npcRouteTraffic: [],
+  nextNpcTrafficAt: Date.now(),
+  batteryExtensions: 0,
+  filamentBoost: null,
+  routeScanUntil: 0,
+  routeScanQuality: null,
+  power: BASE_BATTERY_CAPACITY,
+  lastTick: Date.now(),
+  nextFabId: 2,
+  fabs: [{ id: "fab-1", type: "starter", city: "chrome-pier", rate: 12, mode: "parts", printPattern: defaultPrintPattern("starter"), grams: 0, equipment: {}, ownedStatus: "owned", installedAt: Date.now() }],
+  cityInventories: {
+    lowline: {},
+    "chrome-pier": {
+      "Common Starter Component A": 3,
+      "Common Starter Component B": 2,
+      "Common Starter Component C": 1,
+      "Uncommon Starter Component A": 1,
+      "Common Runner": 1,
+      "Common Guardian": 1,
+    },
+    vanta: {},
+    orchid: {},
+    helix: {},
+  },
+  output: ["Common Starter Component A", "Common Starter Component B"],
+  lastCollected: [],
+  completed: [],
+  dropRates: defaultDropRates(),
+  noItemWeight: defaultNoItemWeight(),
+  marketListings: defaultMarketListings(),
+  marketBids: defaultMarketBids(),
+  marketHistory: [],
+  shipments: [],
+  stolenGoods: [],
+  pvpLog: [],
+  cityStorageBonus: {},
+  nextShipmentRiskReduction: 0,
+  nextMarketId: 1,
+  feed: [],
+});
+

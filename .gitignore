@@ -1,0 +1,6 @@
+*.log
+lan-server.*.log
+.edge-playtest/
+.firefox-playtest/
+.DS_Store
+Thumbs.db

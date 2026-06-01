@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#090d14" />
+    <title>Neon Fabs</title>
+    <link rel="stylesheet" href="styles.css?v=100" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="side-nav" aria-label="Main">
+        <div class="brand">
+          <span class="gem-mark"></span>
+          <div>
+            <strong>Neon Fabs</strong>
+            <span>Lowline testnet</span>
+          </div>
+        </div>
+
+        <nav class="nav-stack">
+          <button class="nav-button active" type="button" data-view="profile">Profile</button>
+          <button class="nav-button" type="button" data-view="contracts">Contracts</button>
+          <button class="nav-button" type="button" data-view="fabs">Fabs</button>
+          <button class="nav-button" type="button" data-view="fab-shop">Fab Shop</button>
+          <button class="nav-button" type="button" data-view="inventory">Inventory</button>
+          <button class="nav-button" type="button" data-view="shipments">Dispatch</button>
+          <button class="nav-button" type="button" data-view="melds">Melds</button>
+          <button class="nav-button" type="button" data-view="profession">Roles</button>
+          <button class="nav-button" type="button" data-view="cities">Cities & Routes</button>
+          <button class="nav-button" type="button" data-view="shop">Market</button>
+          <button class="nav-button" type="button" data-view="wiki">Wiki</button>
+          <button class="nav-button admin-link" type="button" data-view="admin">Admin</button>
+        </nav>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Cyberpunk idle economy</p>
+            <h1 id="screenTitle">Profile</h1>
+          </div>
+          <div class="player-strip">
+            <span id="walletSummary" class="wallet-chip">0cr</span>
+            <span id="playerSummary">Operator (0) | 0cr | 1 chip | Power: 1d 00:00:00</span>
+            <span>Prototype Session</span>
+            <button id="backButton" type="button" data-action="go-back" hidden>Back</button>
+            <button id="resetButton" class="danger" type="button">New Test</button>
+          </div>
+        </header>
+
+        <section class="quick-stats" id="quickStats"></section>
+
+        <main class="content">
+          <section id="mainPanel" class="main-panel"></section>
+          <aside id="rightPanel" class="right-panel"></aside>
+        </main>
+      </div>
+    </div>
+
+    <script src="game-content.js?v=101"></script>
+    <script src="game-systems.js?v=101"></script>
+    <script src="app.js?v=101"></script>
+  </body>
+</html>
