@@ -1,0 +1,131 @@
+.nav-button[hidden] {
+  display: none !important;
+}
+
+.dispatch-role-layout {
+  grid-template-columns: 1fr;
+}
+
+.dispatch-wizard {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.dispatch-wizard > * {
+  grid-column: 1 / -1;
+}
+
+.dispatch-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dispatch-stepper button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  text-align: left;
+}
+
+.dispatch-stepper span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dispatch-stepper strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dispatch-stepper button.active,
+.dispatch-stepper button.complete {
+  border-color: rgba(36, 191, 242, 0.42);
+  background: rgba(36, 191, 242, 0.12);
+}
+
+.dispatch-stepper button.active span,
+.dispatch-stepper button.complete span {
+  background: rgba(36, 191, 242, 0.22);
+  color: var(--text);
+}
+
+.dispatch-wizard-step {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(7, 12, 24, 0.34);
+}
+
+.dispatch-wizard-step .route-pixel-scene {
+  min-height: 190px;
+}
+
+.dispatch-builder-section.subtle {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.compact-dispatch-stats {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.dispatch-wizard-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dispatch-wizard-controls button:first-child {
+  margin-right: auto;
+}
+
+@media (max-width: 980px) {
+  .dispatch-wizard-step .route-pixel-scene {
+    min-height: 160px;
+  }
+}
+
+@media (max-width: 720px) {
+  .dispatch-stepper {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .dispatch-stepper::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dispatch-stepper button {
+    flex: 0 0 112px;
+  }
+
+  .dispatch-wizard-controls {
+    position: sticky;
+    bottom: calc(78px + var(--safe-bottom));
+    z-index: 15;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(8, 11, 17, 0.92);
+  }
+}
