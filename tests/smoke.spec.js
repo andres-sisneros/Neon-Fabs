@@ -107,6 +107,7 @@ test("admin route activity shows player jobs, not npc traffic controls", async (
   await openGame(page, "admin", "merchant");
   await expect(page.getByText("Admin Route Activity")).toBeVisible();
   await expect(page.getByText("Encounter Designer")).toBeVisible();
+  await expect(page.getByText("Custom NPC Units")).toBeVisible();
   await expect(page.getByText("Seed NPC Traffic")).toHaveCount(0);
   await expect(page.getByText("Clear NPC Traffic")).toHaveCount(0);
 });
@@ -142,4 +143,59 @@ test("route encounters roll during travel and save a battle replay", async ({ pa
   await expect.poll(async () => page.evaluate(() => state.routeBattles.length)).toBeGreaterThan(0);
   await expect(page.getByText("Route Battles")).toBeVisible();
   await expect(page.locator(".shipment-card").filter({ hasText: "Test Road Ambush" }).first()).toBeVisible();
+});
+
+test("custom npc hazard can disable a convoy without stolen goods", async ({ page }) => {
+  await openGame(page, "shipments", "merchant");
+
+  const result = await page.evaluate(() => {
+    state.routeEncounterCatalog = normalizeRouteEncounterCatalog([{
+      id: "test-route-hazard",
+      role: "merchant",
+      label: "Test Route Hazard",
+      weight: 1,
+      ratePerHour: 0.95,
+      routeKinds: ["land"],
+      minMiles: 0,
+      maxMiles: 999,
+      difficulty: 4,
+      rarityCeiling: "purple",
+      failureMode: "destroy",
+      cargoUnits: 1,
+      waves: [{
+        id: "test-breaker-wave",
+        label: "Test Breaker Wave",
+        failureMode: "destroy",
+        attackerUnits: [{
+          id: "test-breaker",
+          label: "Test Breaker",
+          role: "raider",
+          rarity: "purple",
+          iconName: "cell",
+          maxHp: 999,
+          speed: 200,
+          impact: 999,
+          escapeDrag: 60,
+        }],
+      }],
+    }]);
+    createShipment([{ name: "Common Starter Component A", qty: 1 }], "Common Runner", "lowline", "none");
+    const originalRandom = Math.random;
+    Math.random = () => 0;
+    advanceGameTime(0.25);
+    Math.random = originalRandom;
+    render();
+    return {
+      outcome: state.routeBattles[0]?.outcome,
+      title: state.routeBattles[0]?.title,
+      stolen: state.stolenGoods.length,
+      shipmentStatus: state.shipments[0]?.status,
+    };
+  });
+
+  expect(result.outcome).toBe("destroyed");
+  expect(result.title).toContain("Test Route Hazard");
+  expect(result.stolen).toBe(0);
+  expect(result.shipmentStatus).toBe("raided");
+  await expect(page.locator(".shipment-card").filter({ hasText: "Convoy Disabled" }).first()).toBeVisible();
 });

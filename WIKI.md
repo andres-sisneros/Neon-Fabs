@@ -238,7 +238,7 @@ Route stabilization is the first Death Stranding-inspired delivery layer. When a
 
 ## Encounter Catalog
 
-Admin mode has an Encounter Designer panel. It edits the route encounter catalog as JSON so encounters can be tuned without changing code.
+Admin mode has an Encounter Designer panel. It edits the route encounter catalog and custom NPC unit catalog as JSON so encounters can be tuned without changing code. This is inspired by trial-maker tools: define an encounter, define waves, define the units that appear in those waves, then test the result through Dispatch or the battle simulator.
 
 Important fields:
 
@@ -254,7 +254,29 @@ Important fields:
 - `supportChance` / `escortChance`: chance to add support vehicles.
 - `cargoUnits`: how much cargo the encounter is carrying or threatening.
 - `clearHours` / `clearReduction`: optional route stabilization reward after clearing the threat.
-- `waves`: optional list of enemy or target layouts under the same encounter. Each wave can override label, weight, difficulty, rarity ceiling, vehicle classes, support or escort chance, and cargo units. The current combat engine resolves one wave per encounter trigger, but this gives us a clean path toward multi-wave route events later.
+- `failureMode`: `steal` means the enemy steals cargo if it wins. `destroy` means the enemy disables or ruins the convoy without creating stolen cargo.
+- `waves`: optional list of enemy or target layouts under the same encounter. Each wave can override label, weight, difficulty, rarity ceiling, vehicle classes, support or escort chance, cargo units, failure mode, and authored NPC units.
+
+Wave unit fields:
+
+- `attackerUnits`: authored NPC units that attack Merchant convoys. If present, they replace the generic NPC raider vehicle party.
+- `defenderUnits`: authored NPC cargo and escort units that Routejacks attack. If present, they replace the generic NPC merchant vehicle party.
+
+Custom NPC unit fields:
+
+- `id`: stable unit key used by waves.
+- `label`: display name in logs and replays.
+- `role`: `raider`, `support`, `cargo`, or `escort`.
+- `rarity`, `iconName`: visual metadata.
+- `maxHp`, `speed`, `impact`: core auto-battler stats.
+- `braveChance`: escort interception chance.
+- `escapeDrag`: pressure that reduces cargo escape progress while this enemy is alive.
+- `targetMode`: `cargo`, `highest-impact`, or `weakest`.
+- `triggers`: future-facing trigger data inspired by Lurker-style custom trials. The prototype preserves trigger JSON now, but only core stats, targeting, brave, and escape drag are active in combat.
+
+Example hazard direction:
+
+- A slow route anomaly can be authored as a `raider` with low `speed`, high `maxHp`, high `impact`, `escapeDrag`, and `failureMode: "destroy"`. This creates an encounter that is not a Routejack theft event; it is a route danger that tries to disable the convoy.
 
 ## Live Route Battles
 

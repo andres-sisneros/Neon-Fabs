@@ -1101,9 +1101,14 @@ function renderAdminRouteTrafficPanel() {
 
 function renderAdminEncounterDesigner() {
   const catalog = routeEncounterCatalog();
+  const unitCatalog = npcCombatUnitCatalog();
   const summaryRows = catalog.map((entry) => `<div class="market-line">
     <span>${entry.role === "routejack" ? "Routejack target" : "Merchant threat"}: ${entry.label}</span>
-    <strong>${Math.round(entry.ratePerHour * 100)}%/hr - ${entry.routeKinds.join("/")}</strong>
+    <strong>${Math.round(entry.ratePerHour * 100)}%/hr - ${entry.routeKinds.join("/")} - ${(entry.waves || []).length} wave${(entry.waves || []).length === 1 ? "" : "s"}</strong>
+  </div>`).join("");
+  const unitRows = unitCatalog.map((unit) => `<div class="market-line">
+    <span>${unit.label}</span>
+    <strong>${unit.role} - HP ${unit.maxHp} / SPD ${unit.speed} / IMP ${unit.impact}</strong>
   </div>`).join("");
   const clearanceRows = allRoutePairs()
     .map(({ from, route }) => {
@@ -1122,17 +1127,30 @@ function renderAdminEncounterDesigner() {
     </div>
     <div class="encounter-admin-layout">
       <div>
+        <h4>Encounters & Waves</h4>
         <textarea id="adminEncounterJson" class="encounter-json" spellcheck="false">${escapeHtml(JSON.stringify(catalog, null, 2))}</textarea>
         <div class="button-row">
           <button type="button" data-admin="save-encounters">Save Encounters</button>
           <button type="button" data-admin="reset-encounters">Reset Encounters</button>
         </div>
       </div>
+      <div>
+        <h4>Custom NPC Units</h4>
+        <textarea id="adminNpcUnitJson" class="encounter-json compact" spellcheck="false">${escapeHtml(JSON.stringify(unitCatalog, null, 2))}</textarea>
+        <div class="button-row">
+          <button type="button" data-admin="save-npc-units">Save NPC Units</button>
+          <button type="button" data-admin="reset-npc-units">Reset NPC Units</button>
+        </div>
+      </div>
       <div class="encounter-admin-summary">
         <h4>Catalog Summary</h4>
         ${summaryRows}
+        <h4>NPC Units</h4>
+        ${unitRows}
         <h4>Route Stabilization</h4>
         ${clearanceRows}
+        <h4>Creator Notes</h4>
+        <p class="muted">Use <code>attackerUnits</code> for threats against Merchant convoys and <code>defenderUnits</code> for Routejack targets. A wave can set <code>failureMode: "destroy"</code> for hazards that disable vehicles instead of stealing cargo.</p>
       </div>
     </div>
   </article>`;
@@ -3060,6 +3078,23 @@ function handleAdmin(action) {
   if (action === "reset-encounters") {
     state.routeEncounterCatalog = normalizeRouteEncounterCatalog(defaultRouteEncounterCatalog);
     addFeed("Admin", "encounters reset", "data");
+  }
+  if (action === "save-npc-units") {
+    try {
+      const raw = document.querySelector("#adminNpcUnitJson")?.value || "[]";
+      const parsed = JSON.parse(raw);
+      const source = Array.isArray(parsed) ? parsed : parsed.units;
+      state.npcCombatUnitCatalog = normalizeNpcCombatUnitCatalog(source);
+      state.routeEncounterCatalog = normalizeRouteEncounterCatalog(state.routeEncounterCatalog);
+      addFeed("Admin", `${state.npcCombatUnitCatalog.length} NPC units saved`, "data");
+    } catch (error) {
+      addFeed("Admin", "NPC unit JSON invalid", "data");
+    }
+  }
+  if (action === "reset-npc-units") {
+    state.npcCombatUnitCatalog = normalizeNpcCombatUnitCatalog(defaultNpcCombatUnitCatalog);
+    state.routeEncounterCatalog = normalizeRouteEncounterCatalog(state.routeEncounterCatalog);
+    addFeed("Admin", "NPC units reset", "data");
   }
   if (action === "seed-npc-traffic") seedNpcRouteTraffic(state, 12);
   if (action === "clear-npc-traffic") {

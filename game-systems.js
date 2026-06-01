@@ -184,6 +184,7 @@ function seedState(nextState) {
   nextState.nextMarketId = Number.isFinite(Number(nextState.nextMarketId)) ? Number(nextState.nextMarketId) : 1;
   nextState.npcRouteTraffic = [];
   nextState.nextNpcTrafficAt = Number.isFinite(Number(nextState.nextNpcTrafficAt)) ? Number(nextState.nextNpcTrafficAt) : Date.now();
+  nextState.npcCombatUnitCatalog = normalizeNpcCombatUnitCatalog(nextState.npcCombatUnitCatalog || defaultNpcCombatUnitCatalog);
   nextState.routeEncounterCatalog = normalizeRouteEncounterCatalog(nextState.routeEncounterCatalog || defaultRouteEncounterCatalog);
   nextState.routeClearances = normalizeRouteClearances(nextState.routeClearances);
   if (nextState.inventory) {
@@ -907,6 +908,71 @@ function rarityIndex(rarity) {
   return Math.max(0, rarityOrder.indexOf(rarity));
 }
 
+function normalizeNpcCombatUnitCatalog(catalog = defaultNpcCombatUnitCatalog) {
+  const source = Array.isArray(catalog) && catalog.length ? catalog : defaultNpcCombatUnitCatalog;
+  return source
+    .map((entry, index) => {
+      const role = ["raider", "support", "cargo", "escort"].includes(entry.role) ? entry.role : "support";
+      const rarity = rarityOrder.includes(entry.rarity) ? entry.rarity : "green";
+      const id = String(entry.id || `npc-unit-${index + 1}`).replace(/[^a-z0-9-_]/gi, "-").toLowerCase();
+      return {
+        id,
+        label: String(entry.label || id),
+        role,
+        rarity,
+        iconName: String(entry.iconName || "data"),
+        maxHp: Math.max(1, Math.min(999, Math.round(Number(entry.maxHp || 50)))),
+        speed: Math.max(1, Math.min(160, Math.round(Number(entry.speed || 16)))),
+        impact: Math.max(0, Math.min(220, Math.round(Number(entry.impact || 8)))),
+        braveChance: Math.max(0, Math.min(95, Math.round(Number(entry.braveChance || 0)))),
+        escapeDrag: Math.max(0, Math.min(80, Math.round(Number(entry.escapeDrag || 0)))),
+        targetMode: ["cargo", "highest-impact", "weakest"].includes(entry.targetMode) ? entry.targetMode : "cargo",
+        triggers: normalizeNpcUnitTriggers(entry.triggers),
+        summary: String(entry.summary || ""),
+      };
+    })
+    .filter((entry, index, list) => entry.id && list.findIndex((candidate) => candidate.id === entry.id) === index);
+}
+
+function normalizeNpcUnitTriggers(triggers = []) {
+  const phases = new Set(["PreAttack", "OnAttack", "PostAttack", "OnDefend", "OnTakeDamage", "OnDeath", "OnAllyDeath", "OnKill"]);
+  const normalizeTrigger = (trigger) => {
+    if (!trigger || typeof trigger !== "object") return null;
+    return {
+      phase: phases.has(trigger.phase) ? trigger.phase : "OnAttack",
+      chance: Math.max(0, Math.min(100, Number(trigger.chance ?? 100))),
+      cooldown: Math.max(0, Math.min(99, Math.floor(Number(trigger.cooldown || 0)))),
+      action: trigger.action || "None",
+      text: String(trigger.text || ""),
+      then: Array.isArray(trigger.then) ? trigger.then.map(normalizeTrigger).filter(Boolean) : [],
+    };
+  };
+  return Array.isArray(triggers) ? triggers.map(normalizeTrigger).filter(Boolean) : [];
+}
+
+function npcCombatUnitCatalog() {
+  if (!Array.isArray(state.npcCombatUnitCatalog) || !state.npcCombatUnitCatalog.length) {
+    state.npcCombatUnitCatalog = normalizeNpcCombatUnitCatalog(defaultNpcCombatUnitCatalog);
+  }
+  return state.npcCombatUnitCatalog;
+}
+
+function npcCombatUnitById(id) {
+  return npcCombatUnitCatalog().find((unit) => unit.id === id) || defaultNpcCombatUnitCatalog.find((unit) => unit.id === id) || null;
+}
+
+function normalizeNpcUnitRefs(units = []) {
+  return Array.isArray(units)
+    ? units
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        if (!entry || typeof entry !== "object") return null;
+        return { ...entry };
+      })
+      .filter(Boolean)
+    : [];
+}
+
 function normalizeRouteEncounterWave(base, wave = {}, index = 0) {
   return {
     id: String(wave.id || `${base.id}-wave-${index + 1}`).replace(/[^a-z0-9-_]/gi, "-").toLowerCase(),
@@ -920,6 +986,9 @@ function normalizeRouteEncounterWave(base, wave = {}, index = 0) {
     supportChance: Math.max(0, Math.min(1, Number(wave.supportChance ?? base.supportChance ?? 0))),
     escortChance: Math.max(0, Math.min(1, Number(wave.escortChance ?? base.escortChance ?? 0))),
     cargoUnits: Math.max(1, Math.min(8, Math.floor(Number(wave.cargoUnits ?? base.cargoUnits ?? 1)))),
+    failureMode: ["steal", "destroy"].includes(wave.failureMode || base.failureMode) ? (wave.failureMode || base.failureMode) : "steal",
+    attackerUnits: normalizeNpcUnitRefs(wave.attackerUnits ?? base.attackerUnits),
+    defenderUnits: normalizeNpcUnitRefs(wave.defenderUnits ?? base.defenderUnits),
   };
 }
 
@@ -954,6 +1023,9 @@ function normalizeRouteEncounterCatalog(catalog = defaultRouteEncounterCatalog) 
         supportChance: Math.max(0, Math.min(1, Number(entry.supportChance || 0))),
         escortChance: Math.max(0, Math.min(1, Number(entry.escortChance || 0))),
         cargoUnits: Math.max(1, Math.min(6, Math.floor(Number(entry.cargoUnits || 1)))),
+        failureMode: ["steal", "destroy"].includes(entry.failureMode) ? entry.failureMode : "steal",
+        attackerUnits: normalizeNpcUnitRefs(entry.attackerUnits),
+        defenderUnits: normalizeNpcUnitRefs(entry.defenderUnits),
         clearHours: Math.max(0, Math.min(24, Number(entry.clearHours || 0))),
         clearReduction: Math.max(0, Math.min(0.85, Number(entry.clearReduction || 0))),
         summary: String(entry.summary || ""),
@@ -1521,6 +1593,8 @@ function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
     to: patrol.to,
     attackerVehicle: patrol.vehicle,
     attackerSupport1,
+    attackerUnits: wave?.attackerUnits || [],
+    replaceAttackers: Boolean(wave?.attackerUnits?.length),
     defenderVehicle: shipment.vehicle,
     defenderEscort1: shipment.escortVehicle || "none",
     cargo: shipmentPrimaryCargo(shipment),
@@ -1530,8 +1604,14 @@ function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
     attackerTactic: "snatch",
     defenderTactic: "protect",
     lootPolicy: patrol.lootPolicy || "upgrade",
+    failureMode: wave?.failureMode || encounter?.failureMode || "steal",
   });
   const battleRun = simulateAutoBattleRun(settings, route);
+  if (settings.failureMode === "destroy" && battleRun.outcome === "stolen") {
+    battleRun.outcome = "destroyed";
+    const final = battleRun.log.findLast?.((entry) => entry.type === "outcome");
+    if (final) final.text = `${wave?.label || encounter?.label || "Route threat"} disabled the convoy instead of stealing cargo.`;
+  }
   const record = recordRouteBattle({
     kind: "npc-raider-merchant",
     title: `${encounter?.label || "NPC encounter"}${wave?.label && wave.label !== encounter?.label ? ` / ${wave.label}` : ""}: ${shipmentCargoShortLabel(shipment)}`,
@@ -1542,7 +1622,7 @@ function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
     run: battleRun,
     relatedShipments: [shipment, patrol],
   });
-  if (battleRun.outcome !== "stolen") {
+  if (!["stolen", "destroyed"].includes(battleRun.outcome)) {
     addShipmentEvent(shipment, `NPC raider encounter engaged and failed. Battle replay ${record.id} recorded.`);
     addShipmentEvent(patrol, `Engaged ${shipment.vehicle}; cargo escaped. Battle replay ${record.id} recorded.`);
     addPvpLog(`${shipmentCargoShortLabel(shipment)} survived an NPC encounter on ${routeLabel(shipment.from, shipment.to)}.`);
@@ -1561,6 +1641,24 @@ function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
       return true;
     }
     return deliverShipment(shipment);
+  }
+
+  if (battleRun.outcome === "destroyed") {
+    shipmentCargos(shipment).forEach((entry) => addItem(entry.name, entry.qty, shipment.from, true));
+    shipment.status = "raided";
+    shipment.resolvedAt = Date.now();
+    addItem(shipment.vehicle, 1, shipment.from, true);
+    if (shipment.escortVehicle) addItem(shipment.escortVehicle, 1, shipment.from, true);
+    addShipmentEvent(shipment, `${wave?.label || encounter?.label || "Route anomaly"} disabled the convoy. Cargo and vehicles were recovered at ${districtById(shipment.from).name}; no cargo was stolen.`);
+    addPvpLog(`${shipmentCargoShortLabel(shipment)} was forced back by ${wave?.label || encounter?.label || "a route anomaly"} on ${routeLabel(shipment.from, shipment.to)}.`);
+    state.dispatchNotice = {
+      type: "warning",
+      shipmentId: shipment.id,
+      text: `${shipmentCargoShortLabel(shipment)} was forced back`,
+      detail: `${wave?.label || encounter?.label || "Route anomaly"} disabled the convoy. Battle replay ${record.id} recorded.`,
+      at: Date.now(),
+    };
+    return false;
   }
 
   let kept = 0;
@@ -1895,10 +1993,15 @@ function normalizeBattleSettings(settings = {}) {
   normalized.lootPolicy = ["first", "upgrade"].includes(normalized.lootPolicy) ? normalized.lootPolicy : "upgrade";
   normalized.attackerTactic = Object.keys(battleAttackerTactics).includes(normalized.attackerTactic) ? normalized.attackerTactic : "snatch";
   normalized.defenderTactic = Object.keys(battleDefenderTactics).includes(normalized.defenderTactic) ? normalized.defenderTactic : "protect";
+  normalized.failureMode = ["steal", "destroy"].includes(normalized.failureMode) ? normalized.failureMode : "steal";
   normalized.maxTicks = Math.max(30, Math.min(500, Math.floor(Number(normalized.maxTicks || 120))));
   normalized.runs = Math.max(1, Math.min(5000, Math.floor(Number(normalized.runs || 250))));
   normalized.attackBonus = Math.max(-100, Math.min(100, Number(normalized.attackBonus || 0)));
   normalized.defenseBonus = Math.max(-100, Math.min(100, Number(normalized.defenseBonus || 0)));
+  normalized.attackerUnits = normalizeNpcUnitRefs(normalized.attackerUnits);
+  normalized.defenderUnits = normalizeNpcUnitRefs(normalized.defenderUnits);
+  normalized.replaceAttackers = Boolean(normalized.replaceAttackers && normalized.attackerUnits.length);
+  normalized.replaceDefenders = Boolean(normalized.replaceDefenders && normalized.defenderUnits.length);
   normalized.modules = normalizeBattleModules(normalized.modules);
   return normalized;
 }
@@ -1944,6 +2047,7 @@ function battleCargoLabel(settings = state.battleSim) {
 }
 
 function battleRoleMatchupText(settings = state.battleSim) {
+  if (settings.failureMode === "destroy") return "Route threat vs convoy: the threat tries to disable the cargo vehicle before it escapes.";
   return "Routejack vs NPC Merchant: the Routejack side tries to disable the cargo vehicle before it escapes.";
 }
 
@@ -1953,9 +2057,13 @@ function routeBattleSettings({
   attackerVehicle,
   attackerSupport1 = "none",
   attackerSupport2 = "none",
+  attackerUnits = [],
+  replaceAttackers = false,
   defenderVehicle,
   defenderEscort1 = "none",
   defenderEscort2 = "none",
+  defenderUnits = [],
+  replaceDefenders = false,
   cargo,
   cargoUnits = 1,
   attackerRole = "routejack",
@@ -1963,6 +2071,7 @@ function routeBattleSettings({
   attackerTactic = "snatch",
   defenderTactic = "protect",
   lootPolicy = "upgrade",
+  failureMode = "steal",
   maxTicks = 120,
 } = {}) {
   return normalizeBattleSettings({
@@ -1972,9 +2081,13 @@ function routeBattleSettings({
     attackerVehicle,
     attackerSupport1,
     attackerSupport2,
+    attackerUnits,
+    replaceAttackers,
     defenderVehicle,
     defenderEscort1,
     defenderEscort2,
+    defenderUnits,
+    replaceDefenders,
     cargo,
     cargoUnits,
     attackerRole,
@@ -1982,6 +2095,7 @@ function routeBattleSettings({
     attackerTactic,
     defenderTactic,
     lootPolicy,
+    failureMode,
     maxTicks,
     runs: 1,
     attackBonus: 0,
@@ -2038,6 +2152,50 @@ function vehicleBattleStats(vehicle, role, settings = {}) {
   return stats;
 }
 
+function npcUnitFromRef(ref) {
+  if (!ref) return null;
+  if (typeof ref === "string") return npcCombatUnitById(ref);
+  if (typeof ref === "object") {
+    const base = npcCombatUnitById(ref.id) || {};
+    return normalizeNpcCombatUnitCatalog([{ ...base, ...ref }])[0] || null;
+  }
+  return null;
+}
+
+function makeNpcBattleUnit(ref, side, fallbackRole = "support") {
+  const unit = npcUnitFromRef(ref);
+  if (!unit) return null;
+  const role = ["raider", "support", "cargo", "escort"].includes(unit.role) ? unit.role : fallbackRole;
+  return {
+    id: `${side}-${role}-${unit.id}-${Math.random().toString(36).slice(2, 7)}`,
+    side,
+    role,
+    name: unit.label,
+    unitId: unit.id,
+    rarity: unit.rarity,
+    iconName: unit.iconName,
+    maxHp: unit.maxHp,
+    hp: unit.maxHp,
+    speed: unit.speed,
+    impact: unit.impact,
+    initiative: 0,
+    escape: 0,
+    shield: 0,
+    poison: 0,
+    braveChance: role === "escort" ? unit.braveChance : 0,
+    escapeDrag: unit.escapeDrag || 0,
+    targetMode: unit.targetMode || "cargo",
+    modules: [],
+    npcUnit: unit,
+  };
+}
+
+function makeNpcBattleUnits(refs = [], side, defaultRoles = []) {
+  return normalizeNpcUnitRefs(refs)
+    .map((ref, index) => makeNpcBattleUnit(ref, side, defaultRoles[index] || defaultRoles[defaultRoles.length - 1] || "support"))
+    .filter(Boolean);
+}
+
 function makeBattleUnit(vehicleName, side, role, settings = {}, route = null, unitKey = "") {
   if (!vehicleName || vehicleName === "none") return null;
   const vehicle = itemByName(vehicleName);
@@ -2065,23 +2223,33 @@ function makeBattleUnit(vehicleName, side, role, settings = {}, route = null, un
     impact: stats.impact,
     initiative: 0,
     escape: 0,
+    shield: 0,
+    poison: 0,
     braveChance: role === "escort" ? Math.min(65, Math.round(22 + rank * 7 + Number(vehicle.durability || 0))) : 0,
+    escapeDrag: 0,
+    targetMode: "cargo",
     modules: [],
     vehicle,
   };
 }
 
 function makeBattleTeams(settings, route = null) {
-  const attackers = [
+  const vehicleAttackers = [
     makeBattleUnit(settings.attackerVehicle, "attacker", "raider", settings, route, "attackerVehicle"),
     makeBattleUnit(settings.attackerSupport1, "attacker", "support", settings, route, "attackerSupport1"),
     makeBattleUnit(settings.attackerSupport2, "attacker", "support", settings, route, "attackerSupport2"),
   ].filter(Boolean);
-  const defenders = [
+  const customAttackers = makeNpcBattleUnits(settings.attackerUnits, "attacker", ["raider", "support", "support"]);
+  const attackers = settings.replaceAttackers && customAttackers.length ? customAttackers : [...vehicleAttackers, ...customAttackers];
+  const vehicleDefenders = [
     makeBattleUnit(settings.defenderVehicle, "defender", "cargo", settings, route, "defenderVehicle"),
     makeBattleUnit(settings.defenderEscort1, "defender", "escort", settings, route, "defenderEscort1"),
     makeBattleUnit(settings.defenderEscort2, "defender", "escort", settings, route, "defenderEscort2"),
   ].filter(Boolean);
+  const customDefenders = makeNpcBattleUnits(settings.defenderUnits, "defender", ["cargo", "escort", "escort"]);
+  const defenders = settings.replaceDefenders && customDefenders.length ? customDefenders : [...vehicleDefenders, ...customDefenders];
+  if (defenders.length && !defenders.some((unit) => unit.role === "cargo")) defenders[0].role = "cargo";
+  if (attackers.length && !attackers.some((unit) => unit.role === "raider")) attackers[0].role = "raider";
   if (settings.defenderTactic === "evade") {
     defenders.filter((unit) => unit.role === "cargo").forEach((unit) => {
       unit.speed += 10;
@@ -2134,6 +2302,8 @@ function battleReadyText(ready) {
 function selectBattleTarget(actor, units, settings) {
   const enemies = liveUnits(units, actor.side === "attacker" ? "defender" : "attacker");
   if (!enemies.length) return null;
+  if (actor.targetMode === "highest-impact") return enemies.sort((a, b) => b.impact - a.impact || a.hp - b.hp)[0];
+  if (actor.targetMode === "weakest") return enemies.sort((a, b) => a.hp - b.hp || b.impact - a.impact)[0];
   if (actor.side === "attacker") {
     const cargo = enemies.find((unit) => unit.role === "cargo");
     const escorts = enemies.filter((unit) => unit.role === "escort");
@@ -2370,22 +2540,23 @@ function applyBattlePoison(actor, log, tick) {
   if (actor.hp <= 0) log.push({ tick, type: "disabled", text: `${battleUnitLabel(actor)} was disabled.` });
 }
 
-function battleCargoEscapeAction(actor, settings, log, tick) {
+function battleCargoEscapeAction(actor, units, settings, log, tick) {
   const loadPenalty = Math.max(0, battleCargoUnits(settings) - 1) * 2;
   const tacticBonus = settings.defenderTactic === "evade" ? 8 : 0;
-  const gain = Math.max(6, Math.round(8 + actor.speed * 0.3 + tacticBonus - loadPenalty));
+  const dragPenalty = liveUnits(units, "attacker").reduce((sum, unit) => sum + Number(unit.escapeDrag || 0), 0);
+  const gain = Math.max(3, Math.round(8 + actor.speed * 0.3 + tacticBonus - loadPenalty - dragPenalty));
   actor.escape += gain;
   log.push({
     tick,
     type: "escape",
     text: `${battleUnitLabel(actor)} pushed for the exit and gained ${gain}% escape progress.`,
-    detail: `Cargo escape is the defender's timer. At 100%, the shipment gets away with ${battleCargoLabel(settings)}.`,
+    detail: `Cargo escape is the defender's timer. At 100%, the shipment gets away with ${battleCargoLabel(settings)}.${dragPenalty ? ` Route pressure reduced this escape push by ${dragPenalty}.` : ""}`,
   });
 }
 
 function battleAct(actor, units, settings, log, tick) {
   if (actor.hp <= 0) return;
-  if (actor.role === "cargo") battleCargoEscapeAction(actor, settings, log, tick);
+  if (actor.role === "cargo") battleCargoEscapeAction(actor, units, settings, log, tick);
   else battleBasicAttack(actor, units, settings, log, tick);
 }
 
@@ -2498,6 +2669,7 @@ function simulateAutoBattleRun(settings, route) {
 function battleOutcomeLabel(outcome) {
   return {
     stolen: "Cargo Taken",
+    destroyed: "Convoy Disabled",
     defended: "Cargo Defended",
     escaped: "Cargo Escaped",
     timeout: "Timed Out",
@@ -2505,7 +2677,7 @@ function battleOutcomeLabel(outcome) {
 }
 
 function summarizeBattleRuns(settings, routeInfo, route, runResults) {
-  const outcomeCounts = { stolen: 0, defended: 0, escaped: 0, timeout: 0 };
+  const outcomeCounts = { stolen: 0, destroyed: 0, defended: 0, escaped: 0, timeout: 0 };
   const unitSurvival = {};
   let totalTicks = 0;
   let totalCargoHp = 0;
@@ -2534,7 +2706,7 @@ function summarizeBattleRuns(settings, routeInfo, route, runResults) {
     runs: settings.runs,
     maxTicks: settings.maxTicks,
     outcomeCounts,
-    stealRate: outcomeCounts.stolen / settings.runs,
+    stealRate: (outcomeCounts.stolen + outcomeCounts.destroyed) / settings.runs,
     defendRate: (outcomeCounts.defended + outcomeCounts.escaped) / settings.runs,
     escapeRate: outcomeCounts.escaped / settings.runs,
     averageTicks: totalTicks / settings.runs,
@@ -2814,6 +2986,8 @@ function resolveRoutejackNpcEncounter(run, encounterRoll) {
     attackerSupport2: run.support2 || "none",
     defenderVehicle: target.vehicle.name,
     defenderEscort1: target.escort?.name || "none",
+    defenderUnits: wave?.defenderUnits || [],
+    replaceDefenders: Boolean(wave?.defenderUnits?.length),
     cargo: target.cargo.name,
     cargoUnits: target.cargoUnits || 1,
     attackerRole: "routejack",

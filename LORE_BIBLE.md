@@ -20,9 +20,10 @@ Cities are stitched together by old routes and newer fab networks. Matter printe
 - Fabs are not magic. They are local machines constrained by feedstock, permissions, maintenance, and power.
 - Markets are local because inventory is local. Buying in a city stores the item there.
 - Vehicles are printed route tools. They move cargo, but later they can be delayed, damaged, stolen, or restricted by route type.
-- Melds are civic-memory sets: fused patterns of objects that stabilize the player’s operating identity and increase battery capacity.
+- Melds are civic-memory sets: fused patterns of objects that stabilize the player's operating identity and increase battery capacity.
 - Melds are not normal inventory. To move home cities later, a player must deconstruct melds, move the components through route risk, and fuse them again in the new home city.
 - Routes remember labor. Clearing hostile crews, maintaining corridors, and moving goods can temporarily lower route pressure for everyone using that connection.
+- Not every route threat is human. Some corridors have machine weather, signal hauntings, tar-like nanite blooms, or civic-defense ghosts that disable vehicles without caring about cargo.
 - Scarcity is political. The world can print abundance, but access is always mediated by someone.
 - Starter accounts own only the Starter Fab. Additional fabs can be bought or rented later, with a hard cap of three active fabs.
 

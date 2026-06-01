@@ -3570,7 +3570,7 @@ h3 {
 
 .encounter-admin-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(280px, 0.8fr);
   gap: 14px;
   align-items: start;
 }
@@ -3581,6 +3581,10 @@ h3 {
   font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.encounter-json.compact {
+  min-height: 420px;
 }
 
 .encounter-admin-summary {
