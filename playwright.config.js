@@ -35,5 +35,16 @@ module.exports = defineConfig({
         userAgent: devices["iPhone 13 Mini"].userAgent,
       },
     },
+    {
+      name: "iphone-17",
+      use: {
+        browserName: "chromium",
+        viewport: { width: 402, height: 874 },
+        deviceScaleFactor: 3,
+        hasTouch: true,
+        isMobile: true,
+        userAgent: devices["iPhone 13 Mini"].userAgent,
+      },
+    },
   ],
 });
