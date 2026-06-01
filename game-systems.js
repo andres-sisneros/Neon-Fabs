@@ -68,6 +68,13 @@ function seedState(nextState) {
   nextState.selectedItem = itemByName(nextState.selectedItem)?.name || "Common Starter Component A";
   nextState.shipmentCargo = itemByName(nextState.shipmentCargo)?.name || "Common Starter Component A";
   nextState.shipmentCargoQty = Math.max(1, Math.floor(Number(nextState.shipmentCargoQty || 1)));
+  nextState.shipmentCargoLoad = nextState.shipmentCargoLoad && typeof nextState.shipmentCargoLoad === "object" && !Array.isArray(nextState.shipmentCargoLoad)
+    ? Object.fromEntries(Object.entries(nextState.shipmentCargoLoad)
+      .filter(([name]) => knownItemName(name) && itemByName(name).category !== "vehicle")
+      .map(([name, qty]) => [name, Math.max(0, Math.floor(Number(qty || 0)))])
+      .filter(([, qty]) => qty > 0))
+    : {};
+  nextState.shipmentCargoLoadTouched = Boolean(nextState.shipmentCargoLoadTouched);
   nextState.dispatchCargoSearch = nextState.dispatchCargoSearch || "";
   nextState.shipmentVehicle = itemByName(nextState.shipmentVehicle)?.category === "vehicle" ? nextState.shipmentVehicle : "Common Runner";
   nextState.shipmentEscort = itemByName(nextState.shipmentEscort)?.category === "vehicle" ? nextState.shipmentEscort : "none";
@@ -175,11 +182,10 @@ function seedState(nextState) {
   nextState.cityStorageBonus = nextState.cityStorageBonus || {};
   nextState.nextShipmentRiskReduction = Math.max(0, Number(nextState.nextShipmentRiskReduction || 0));
   nextState.nextMarketId = Number.isFinite(Number(nextState.nextMarketId)) ? Number(nextState.nextMarketId) : 1;
-  nextState.npcRouteTraffic = Array.isArray(nextState.npcRouteTraffic)
-    ? nextState.npcRouteTraffic.filter((traffic) => traffic && traffic.endsAt > Date.now() - 300000).slice(0, 24)
-    : [];
+  nextState.npcRouteTraffic = [];
   nextState.nextNpcTrafficAt = Number.isFinite(Number(nextState.nextNpcTrafficAt)) ? Number(nextState.nextNpcTrafficAt) : Date.now();
-  if (!nextState.npcRouteTraffic.length) seedNpcRouteTraffic(nextState, 10);
+  nextState.routeEncounterCatalog = normalizeRouteEncounterCatalog(nextState.routeEncounterCatalog || defaultRouteEncounterCatalog);
+  nextState.routeClearances = normalizeRouteClearances(nextState.routeClearances);
   if (nextState.inventory) {
     nextState.cityInventories[nextState.homeCity] = { ...nextState.cityInventories[nextState.homeCity], ...nextState.inventory };
     delete nextState.inventory;
@@ -897,6 +903,124 @@ function allRoutePairs() {
   })));
 }
 
+function rarityIndex(rarity) {
+  return Math.max(0, rarityOrder.indexOf(rarity));
+}
+
+function normalizeRouteEncounterWave(base, wave = {}, index = 0) {
+  return {
+    id: String(wave.id || `${base.id}-wave-${index + 1}`).replace(/[^a-z0-9-_]/gi, "-").toLowerCase(),
+    label: String(wave.label || (index ? `${base.label} Wave ${index + 1}` : base.label)),
+    weight: Math.max(1, Number(wave.weight || 1)),
+    difficulty: Math.max(0, Math.min(4, Math.floor(Number(wave.difficulty ?? base.difficulty ?? 0)))),
+    rarityCeiling: rarityOrder.includes(wave.rarityCeiling) ? wave.rarityCeiling : base.rarityCeiling,
+    attackerClasses: Array.isArray(wave.attackerClasses) && wave.attackerClasses.length ? wave.attackerClasses : base.attackerClasses,
+    attackerSupportClasses: Array.isArray(wave.attackerSupportClasses) ? wave.attackerSupportClasses : base.attackerSupportClasses,
+    vehicleClasses: Array.isArray(wave.vehicleClasses) && wave.vehicleClasses.length ? wave.vehicleClasses : base.vehicleClasses,
+    supportChance: Math.max(0, Math.min(1, Number(wave.supportChance ?? base.supportChance ?? 0))),
+    escortChance: Math.max(0, Math.min(1, Number(wave.escortChance ?? base.escortChance ?? 0))),
+    cargoUnits: Math.max(1, Math.min(8, Math.floor(Number(wave.cargoUnits ?? base.cargoUnits ?? 1)))),
+  };
+}
+
+function normalizeRouteEncounterWaves(entry, base) {
+  const source = Array.isArray(entry.waves) && entry.waves.length ? entry.waves : [entry];
+  return source.map((wave, index) => normalizeRouteEncounterWave(base, wave, index));
+}
+
+function normalizeRouteEncounterCatalog(catalog = defaultRouteEncounterCatalog) {
+  const source = Array.isArray(catalog) && catalog.length ? catalog : defaultRouteEncounterCatalog;
+  return source
+    .map((entry, index) => {
+      const role = entry.role === "routejack" ? "routejack" : "merchant";
+      const rarityCeiling = rarityOrder.includes(entry.rarityCeiling) ? entry.rarityCeiling : "green";
+      const routeKinds = Array.isArray(entry.routeKinds) && entry.routeKinds.length
+        ? entry.routeKinds.filter((kind) => ["land", "water"].includes(kind))
+        : ["land", "water"];
+      const base = {
+        id: String(entry.id || `encounter-${index + 1}`).replace(/[^a-z0-9-_]/gi, "-").toLowerCase(),
+        role,
+        label: String(entry.label || (role === "routejack" ? "NPC Cargo Target" : "NPC Raider")),
+        weight: Math.max(1, Number(entry.weight || 1)),
+        ratePerHour: Math.max(0, Math.min(2, Number(entry.ratePerHour || 0))),
+        routeKinds: routeKinds.length ? routeKinds : ["land", "water"],
+        minMiles: Math.max(0, Number(entry.minMiles || 0)),
+        maxMiles: Math.max(1, Number(entry.maxMiles || 9999)),
+        difficulty: Math.max(0, Math.min(4, Math.floor(Number(entry.difficulty || 0)))),
+        rarityCeiling,
+        attackerClasses: Array.isArray(entry.attackerClasses) && entry.attackerClasses.length ? entry.attackerClasses : ["interceptor", "runner"],
+        attackerSupportClasses: Array.isArray(entry.attackerSupportClasses) ? entry.attackerSupportClasses : [],
+        vehicleClasses: Array.isArray(entry.vehicleClasses) && entry.vehicleClasses.length ? entry.vehicleClasses : ["runner", "freighter"],
+        supportChance: Math.max(0, Math.min(1, Number(entry.supportChance || 0))),
+        escortChance: Math.max(0, Math.min(1, Number(entry.escortChance || 0))),
+        cargoUnits: Math.max(1, Math.min(6, Math.floor(Number(entry.cargoUnits || 1)))),
+        clearHours: Math.max(0, Math.min(24, Number(entry.clearHours || 0))),
+        clearReduction: Math.max(0, Math.min(0.85, Number(entry.clearReduction || 0))),
+        summary: String(entry.summary || ""),
+      };
+      base.waves = normalizeRouteEncounterWaves(entry, base);
+      return base;
+    })
+    .filter((entry) => entry.ratePerHour > 0 && entry.minMiles <= entry.maxMiles);
+}
+
+function routeEncounterCatalog() {
+  if (!Array.isArray(state.routeEncounterCatalog) || !state.routeEncounterCatalog.length) {
+    state.routeEncounterCatalog = normalizeRouteEncounterCatalog(defaultRouteEncounterCatalog);
+  }
+  return state.routeEncounterCatalog;
+}
+
+function routeKey(fromCityId, toCityId) {
+  return [fromCityId, toCityId].sort().join(">");
+}
+
+function normalizeRouteClearances(clearances = {}) {
+  const now = Date.now();
+  return Object.fromEntries(Object.entries(clearances || {})
+    .map(([key, value]) => [key, {
+      clearedUntil: Number(value?.clearedUntil || 0),
+      reduction: Math.max(0, Math.min(0.85, Number(value?.reduction || 0))),
+      label: value?.label || "Route stabilized",
+      clearedBy: value?.clearedBy || "Route crews",
+    }])
+    .filter(([, value]) => value.clearedUntil > now && value.reduction > 0));
+}
+
+function routeClearance(fromCityId, toCityId, now = Date.now()) {
+  state.routeClearances = normalizeRouteClearances(state.routeClearances);
+  const clearance = state.routeClearances[routeKey(fromCityId, toCityId)];
+  return clearance?.clearedUntil > now ? clearance : null;
+}
+
+function routeRiskMultiplier(fromCityId, toCityId, now = Date.now()) {
+  const clearance = routeClearance(fromCityId, toCityId, now);
+  return clearance ? Math.max(0.15, 1 - clearance.reduction) : 1;
+}
+
+function applyRouteClearance(fromCityId, toCityId, encounter, source = state.player) {
+  const hours = Math.max(0, Number(encounter?.clearHours || 0));
+  const reduction = Math.max(0, Number(encounter?.clearReduction || 0));
+  if (!hours || !reduction) return null;
+  const key = routeKey(fromCityId, toCityId);
+  const existing = routeClearance(fromCityId, toCityId);
+  const clearedUntil = Math.max(existing?.clearedUntil || 0, Date.now() + hours * 3600000);
+  const next = {
+    clearedUntil,
+    reduction: Math.max(existing?.reduction || 0, reduction),
+    label: encounter.label || "Route stabilized",
+    clearedBy: source,
+  };
+  state.routeClearances[key] = next;
+  return next;
+}
+
+function routeClearanceSummary(fromCityId, toCityId) {
+  const clearance = routeClearance(fromCityId, toCityId);
+  if (!clearance) return "";
+  return `Stabilized ${Math.round(clearance.reduction * 100)}% for ${formatPower((clearance.clearedUntil - Date.now()) / 1000)}`;
+}
+
 const npcRouteNames = {
   merchant: ["Glass Finch Logistics", "Ramen Mule Co.", "Sleeper Dock Union", "Saffron Ledger"],
   routejack: ["Static Knives", "Null Toll Crew", "Redline Ghosts", "Signal Rats"],
@@ -944,14 +1068,8 @@ function addNpcRouteTraffic(targetState = state, now = Date.now()) {
 }
 
 function processNpcRouteTraffic(now = Date.now()) {
-  state.npcRouteTraffic = (state.npcRouteTraffic || [])
-    .map((traffic) => ({ ...traffic, status: traffic.endsAt <= now ? "resolved" : "active" }))
-    .filter((traffic) => traffic.status === "active" || traffic.endsAt > now - 420000)
-    .slice(0, 24);
-  if (!state.nextNpcTrafficAt || now >= state.nextNpcTrafficAt || state.npcRouteTraffic.filter((traffic) => traffic.status === "active").length < 7) {
-    addNpcRouteTraffic(state, now);
-    state.nextNpcTrafficAt = now + 45000 + Math.random() * 75000;
-  }
+  state.npcRouteTraffic = [];
+  state.nextNpcTrafficAt = now;
 }
 
 function npcRouteTrafficForCity(cityId = state.district) {
@@ -1096,11 +1214,15 @@ function routeJobDetail(shipment) {
   const capacity = shipment.capacity || routeRunCapacity(shipment);
   const profile = vehicle?.category === "vehicle" ? `${profileBand(vehicleProfileScore(vehicle))} profile` : "unknown profile";
   const sensor = vehicle?.category === "vehicle" ? `${vehicleSensorScore(vehicle)} sensor` : "unknown sensor";
+  const route = routeBetween(shipment.from, shipment.to);
+  const encounter = route ? `Encounter ${routeEncounterHourlyChance(shipment, route)}%/hr` : "Encounter unknown";
+  const clearance = route ? routeClearanceSummary(shipment.from, shipment.to) : "";
+  const routeState = clearance ? `${encounter}; ${clearance}` : encounter;
   if (shipment.kind === "intercept") {
     const convoy = routeRunVehicles(shipment).join(" + ");
-    return `Raiding designed NPC cargo targets at ${speed}. Convoy: ${convoy}. Hold policy: ${shipment.lootPolicy === "upgrade" ? "upgrade loot" : "fill hold"}. Capacity ${capacity}; ${sensor}.`;
+    return `Raiding designed NPC cargo targets at ${speed}. Convoy: ${convoy}. Hold policy: ${shipment.lootPolicy === "upgrade" ? "upgrade loot" : "fill hold"}. Capacity ${capacity}; ${sensor}; ${routeState}.`;
   }
-  return `Manifest: ${shipmentCargoLabel(shipment)}. ${profile}; NPC encounter profile unknown.`;
+  return `Manifest: ${shipmentCargoLabel(shipment)}. ${profile}; ${routeState}.`;
 }
 
 function routeDetectionChance(hunterVehicle, targetVehicle, cargoUnits = 1, options = {}) {
@@ -1119,11 +1241,87 @@ function routeDetectionRoll(hunterVehicle, targetVehicle, cargoUnits = 1, option
   return { chance, roll, detected: roll < chance };
 }
 
+function routeEncounterChance(route, vehicle, cargoUnits = 1, options = {}) {
+  const miles = routeDistance(route);
+  const profile = vehicleProfileScore(vehicle);
+  const cargoPressure = Math.max(0, Number(cargoUnits || 1) - 1) * 5;
+  const routePressure = Math.min(28, miles / 7);
+  const speedReduction = Math.min(14, vehicleMph(vehicle) * 0.08);
+  const escortReduction = options.escort ? 10 : 0;
+  const roleReduction = Number.isFinite(Number(options.roleReduction)) ? Number(options.roleReduction) : (currentRole().riskReduction || 0);
+  const chance = 8 + routePressure + profile * 0.34 + cargoPressure - speedReduction - escortReduction - roleReduction;
+  return Math.round(Math.max(5, Math.min(70, chance)));
+}
+
+function eligibleRouteEncounters(shipment, route) {
+  const role = shipment.kind === "intercept" ? "routejack" : "merchant";
+  const miles = routeDistance(route);
+  const kind = routeKind(route);
+  return routeEncounterCatalog().filter((entry) => entry.role === role
+    && entry.routeKinds.includes(kind)
+    && miles >= entry.minMiles
+    && miles <= entry.maxMiles);
+}
+
+function routeEncounterRatePerHour(shipment, route) {
+  const entries = eligibleRouteEncounters(shipment, route);
+  const baseRate = entries.reduce((sum, entry) => sum + Number(entry.ratePerHour || 0), 0);
+  const loadPressure = shipment.kind === "intercept" ? 1 : 1 + Math.max(0, shipmentCargoUnits(shipment) - 1) * 0.08;
+  const clearance = routeRiskMultiplier(shipment.from, shipment.to);
+  return Math.max(0, Math.min(1.8, baseRate * loadPressure * clearance));
+}
+
+function routeEncounterHourlyChance(shipment, route) {
+  return Math.round(Math.max(0, Math.min(95, routeEncounterRatePerHour(shipment, route) * 100)));
+}
+
+function pickRouteEncounter(shipment, route) {
+  const entries = eligibleRouteEncounters(shipment, route);
+  const total = entries.reduce((sum, entry) => sum + (entry.weight * Math.max(0.01, entry.ratePerHour)), 0);
+  if (!total) return null;
+  let roll = Math.random() * total;
+  for (const entry of entries) {
+    roll -= entry.weight * Math.max(0.01, entry.ratePerHour);
+    if (roll <= 0) return entry;
+  }
+  return entries[entries.length - 1] || null;
+}
+
+function pickEncounterWave(encounter) {
+  if (!encounter) return null;
+  const waves = Array.isArray(encounter?.waves) && encounter.waves.length
+    ? encounter.waves
+    : normalizeRouteEncounterWaves(encounter || {}, encounter || {});
+  const total = waves.reduce((sum, wave) => sum + Math.max(1, Number(wave.weight || 1)), 0);
+  let roll = Math.random() * total;
+  for (const wave of waves) {
+    roll -= Math.max(1, Number(wave.weight || 1));
+    if (roll <= 0) return wave;
+  }
+  return waves[0] || null;
+}
+
+function rollRouteEncounter(shipment, route, elapsedMs) {
+  const elapsedHours = Math.max(0, elapsedMs / 3600000);
+  if (!elapsedHours) return null;
+  const hourlyRate = routeEncounterRatePerHour(shipment, route);
+  if (!hourlyRate) return null;
+  const chance = 1 - Math.pow(Math.max(0, 1 - Math.min(0.95, hourlyRate)), elapsedHours);
+  const roll = Math.random();
+  if (roll >= chance) return null;
+  const encounter = pickRouteEncounter(shipment, route);
+  return encounter ? { encounter, wave: pickEncounterWave(encounter), chance, roll, elapsedHours } : null;
+}
+
+function routejackTargetRichness(route) {
+  const miles = routeDistance(route);
+  if (miles >= 180) return "High-value convoys";
+  if (miles >= 110) return "Mixed cargo";
+  return "Local cargo";
+}
+
 function shipmentRiskChance(route, vehicle, fromCityId = state.district) {
-  const durability = Number(vehicle?.durability || 0);
-  const roleReduction = currentRole().riskReduction || 0;
-  const interceptorPressure = npcRouteTrafficOnRoute(fromCityId, route?.to, "routejack").length * 18;
-  return Math.max(MIN_ROUTE_RISK, Math.min(60, Math.round(MIN_ROUTE_RISK + interceptorPressure - durability * 0.6 - roleReduction)));
+  return routeEncounterChance(route, vehicle, 1, { escort: false, fromCityId });
 }
 
 function vehicleItemsIn(cityId = state.district) {
@@ -1136,6 +1334,56 @@ function shippableItemsIn(cityId = state.district) {
   return Object.entries(inventoryFor(cityId))
     .map(([name, count]) => ({ item: itemByName(name), count }))
     .filter(({ item, count }) => item.category !== "vehicle" && count > 0);
+}
+
+function shipmentCargoLoadEntries(cityId = state.district, capacity = Infinity) {
+  const inventory = inventoryFor(cityId);
+  const rawLoad = state.shipmentCargoLoad && typeof state.shipmentCargoLoad === "object" && !Array.isArray(state.shipmentCargoLoad)
+    ? { ...state.shipmentCargoLoad }
+    : {};
+  if (!Object.keys(rawLoad).length && !state.shipmentCargoLoadTouched && knownItemName(state.shipmentCargo) && itemByName(state.shipmentCargo).category !== "vehicle") {
+    rawLoad[state.shipmentCargo] = Math.max(1, Math.floor(Number(state.shipmentCargoQty || 1)));
+  }
+  const cleanLoad = {};
+  let remaining = Math.max(0, Number.isFinite(capacity) ? Math.floor(capacity) : Infinity);
+  Object.entries(rawLoad).forEach(([name, qty]) => {
+    if (!knownItemName(name) || itemByName(name).category === "vehicle" || remaining <= 0) return;
+    const owned = Math.max(0, Math.floor(Number(inventory[name] || 0)));
+    const requested = Math.max(0, Math.floor(Number(qty || 0)));
+    const kept = Math.min(owned, requested, remaining);
+    if (kept > 0) {
+      cleanLoad[name] = kept;
+      remaining -= kept;
+    }
+  });
+  state.shipmentCargoLoad = cleanLoad;
+  const entries = Object.entries(cleanLoad).map(([name, qty]) => ({ name, qty }));
+  const first = entries[0];
+  if (first) {
+    state.shipmentCargo = first.name;
+    state.shipmentCargoQty = first.qty;
+  }
+  return entries;
+}
+
+function shipmentCargoLoadUnits(load = shipmentCargoLoadEntries()) {
+  return load.reduce((sum, entry) => sum + Math.max(0, Math.floor(Number(entry.qty || 0))), 0);
+}
+
+function updateShipmentCargoLoad(itemName, delta, cityId = state.district, capacity = Infinity) {
+  if (!knownItemName(itemName) || itemByName(itemName).category === "vehicle") return [];
+  state.shipmentCargoLoadTouched = true;
+  const current = shipmentCargoLoadEntries(cityId, capacity);
+  const currentQty = current.find((entry) => entry.name === itemName)?.qty || 0;
+  const currentUnits = shipmentCargoLoadUnits(current);
+  const owned = Math.max(0, Math.floor(Number(inventoryFor(cityId)[itemName] || 0)));
+  const roomForItem = Math.max(0, (Number.isFinite(capacity) ? Math.floor(capacity) : currentUnits + owned) - currentUnits + currentQty);
+  const nextQty = Math.max(0, Math.min(owned, roomForItem, currentQty + Math.floor(Number(delta || 0))));
+  if (nextQty > 0) state.shipmentCargoLoad[itemName] = nextQty;
+  else delete state.shipmentCargoLoad[itemName];
+  state.shipmentCargo = itemName;
+  state.shipmentCargoQty = Math.max(1, nextQty || 1);
+  return shipmentCargoLoadEntries(cityId, capacity);
 }
 
 function shipmentStatus(shipment) {
@@ -1188,8 +1436,12 @@ function shipmentPrimaryCargo(shipment) {
 function readShipmentCargoLoad() {
   const controls = [...document.querySelectorAll("[data-ship-cargo]")];
   if (!controls.length) {
-    const fallback = document.querySelector("#shipmentCargo")?.value;
-    return fallback ? [{ name: fallback, qty: 1 }] : [];
+    const vehicle = itemByName(state.shipmentVehicle);
+    const capacity = vehicle?.category === "vehicle" ? Math.max(1, Number(vehicle.capacity || 1)) : Infinity;
+    const stateLoad = shipmentCargoLoadEntries(state.district, capacity);
+    if (stateLoad.length) return stateLoad;
+    const fallback = document.querySelector("#shipmentCargo")?.value || state.shipmentCargo;
+    return fallback && knownItemName(fallback) ? [{ name: fallback, qty: Math.max(1, Math.floor(Number(state.shipmentCargoQty || 1))) }] : [];
   }
   return controls
     .map((input) => ({ name: input.dataset.shipCargo, qty: Math.max(0, Math.floor(Number(input.value || 0))) }))
@@ -1257,12 +1509,18 @@ function recordStolenGood(itemName, qty, from, to, raider, battleId = null, extr
   state.stolenGoods = state.stolenGoods.slice(0, 60);
 }
 
-function resolveMerchantRoutejackBattle(shipment, patrol) {
+function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
   const route = routeBetween(shipment.from, shipment.to);
+  const encounter = options.encounter || null;
+  const wave = options.wave || pickEncounterWave(encounter) || encounter;
+  const attackerSupport1 = wave && Math.random() < wave.supportChance
+    ? simulatedRouteVehicle(route, wave.attackerSupportClasses || ["runner"], { maxRarityRank: rarityIndex(wave.rarityCeiling) }).name
+    : "none";
   const settings = routeBattleSettings({
     from: patrol.from,
     to: patrol.to,
     attackerVehicle: patrol.vehicle,
+    attackerSupport1,
     defenderVehicle: shipment.vehicle,
     defenderEscort1: shipment.escortVehicle || "none",
     cargo: shipmentPrimaryCargo(shipment),
@@ -1276,7 +1534,7 @@ function resolveMerchantRoutejackBattle(shipment, patrol) {
   const battleRun = simulateAutoBattleRun(settings, route);
   const record = recordRouteBattle({
     kind: "npc-raider-merchant",
-    title: `NPC encounter: ${shipmentCargoShortLabel(shipment)}`,
+    title: `${encounter?.label || "NPC encounter"}${wave?.label && wave.label !== encounter?.label ? ` / ${wave.label}` : ""}: ${shipmentCargoShortLabel(shipment)}`,
     from: shipment.from,
     to: shipment.to,
     settings,
@@ -1288,6 +1546,20 @@ function resolveMerchantRoutejackBattle(shipment, patrol) {
     addShipmentEvent(shipment, `NPC raider encounter engaged and failed. Battle replay ${record.id} recorded.`);
     addShipmentEvent(patrol, `Engaged ${shipment.vehicle}; cargo escaped. Battle replay ${record.id} recorded.`);
     addPvpLog(`${shipmentCargoShortLabel(shipment)} survived an NPC encounter on ${routeLabel(shipment.from, shipment.to)}.`);
+    const clearance = applyRouteClearance(shipment.from, shipment.to, encounter, state.player);
+    if (clearance) {
+      addShipmentEvent(shipment, `${routeLabel(shipment.from, shipment.to)} stabilized by ${Math.round(clearance.reduction * 100)}% for ${formatPower((clearance.clearedUntil - Date.now()) / 1000)}.`);
+    }
+    if (options.continueOnSurvive) {
+      state.dispatchNotice = {
+        type: "success",
+        shipmentId: shipment.id,
+        text: `${shipmentCargoShortLabel(shipment)} survived a route encounter`,
+        detail: `${wave?.label || encounter?.label || "NPC raider"} failed on ${routeLabel(shipment.from, shipment.to)}. Convoy is still en route.`,
+        at: Date.now(),
+      };
+      return true;
+    }
     return deliverShipment(shipment);
   }
 
@@ -1323,26 +1595,49 @@ function resolveMerchantRoutejackBattle(shipment, patrol) {
   addShipmentEvent(patrol, `Stole ${kept} cargo unit${kept === 1 ? "" : "s"} from ${shipment.vehicle}. Battle replay ${record.id} recorded.`);
   addPvpLog(`${patrol.ownerName || "NPC raider"} stole ${kept} item${kept === 1 ? "" : "s"} on ${routeLabel(shipment.from, shipment.to)}.`);
   addFeed(patrol.owner === "npc" ? "Route Watch" : state.player, patrol.owner === "npc" ? `lost ${kept} cargo` : `stole ${kept} cargo`, itemByName(shipmentPrimaryCargo(shipment)).iconName);
+  state.dispatchNotice = {
+    type: "warning",
+    shipmentId: shipment.id,
+    text: `${shipmentCargoShortLabel(shipment)} was hit on route`,
+    detail: `${patrol.ownerName || "NPC raider"} stole ${kept} cargo unit${kept === 1 ? "" : "s"}. Battle replay ${record.id} recorded.`,
+    at: Date.now(),
+  };
   return false;
 }
 
 function resolveShipmentRisk(shipment) {
-  if (shipment.riskChecked) return deliverShipment(shipment);
-  shipment.riskChecked = true;
-  const patrol = npcRoutejackPatrolOnRoute(shipment.from, shipment.to);
-  if (!patrol) return deliverShipment(shipment);
-  const detection = routeDetectionRoll(itemByName(patrol.vehicle), itemByName(shipment.vehicle), shipmentCargoUnits(shipment));
-  shipment.detectionChance = detection.chance;
-  patrol.lastDetectionChance = detection.chance;
-  if (!detection.detected) {
-    addShipmentEvent(shipment, `An NPC route encounter was active, but the convoy stayed under profile. Detection ${detection.chance}%, rolled ${Math.round(detection.roll)}.`);
-    addShipmentEvent(patrol, `Missed a ${shipment.vehicle} convoy on the route. Detection ${detection.chance}%, rolled ${Math.round(detection.roll)}.`);
-    addPvpLog(`${shipmentCargoShortLabel(shipment)} slipped past an NPC route encounter on ${routeLabel(shipment.from, shipment.to)}.`);
-    return deliverShipment(shipment);
-  }
-  addShipmentEvent(shipment, `NPC route encounter detected the convoy. Detection ${detection.chance}%, rolled ${Math.round(detection.roll)}.`);
-  addShipmentEvent(patrol, `Detected ${shipment.vehicle} carrying ${shipmentCargoShortLabel(shipment)}. Detection ${detection.chance}%, rolled ${Math.round(detection.roll)}.`);
-  return resolveMerchantRoutejackBattle(shipment, patrol);
+  return deliverShipment(shipment);
+}
+
+function resolveMerchantTimedEncounter(shipment, encounterRoll) {
+  const route = routeBetween(shipment.from, shipment.to);
+  const encounter = encounterRoll.encounter;
+  const wave = encounterRoll.wave || pickEncounterWave(encounter) || encounter;
+  const raiderVehicle = simulatedRouteVehicle(route, wave.attackerClasses || ["interceptor", "runner"], { maxRarityRank: rarityIndex(wave.rarityCeiling) });
+  const patrol = {
+    id: nextMarketId("npc-encounter"),
+    kind: "intercept",
+    owner: "npc",
+    ownerName: randomFrom(npcRouteNames.routejack),
+    from: shipment.from,
+    to: shipment.to,
+    vehicle: raiderVehicle.name,
+    loot: [],
+    lootPolicy: "upgrade",
+    capacity: Math.max(1, Number(raiderVehicle.capacity || 1)),
+    status: "in-transit",
+    events: [],
+  };
+  addShipmentEvent(shipment, `${patrol.ownerName} found the convoy: ${encounter.label}${wave?.label && wave.label !== encounter.label ? ` / ${wave.label}` : ""}. Hourly route chance ${Math.round(encounterRoll.chance * 100)}%.`);
+  addShipmentEvent(patrol, `Found ${shipment.vehicle} carrying ${shipmentCargoShortLabel(shipment)}.`);
+  state.dispatchNotice = {
+    type: "warning",
+    shipmentId: shipment.id,
+    text: `${shipmentCargoShortLabel(shipment)} is under attack`,
+    detail: `${wave?.label || encounter.label} intercepted ${shipment.vehicle} on ${routeLabel(shipment.from, shipment.to)}.`,
+    at: Date.now(),
+  };
+  return resolveMerchantRoutejackBattle(shipment, patrol, { encounter, wave, continueOnSurvive: true });
 }
 
 function vehicleAttackScore(vehicle) {
@@ -1417,40 +1712,49 @@ function designedNpcTargetProfile(route, options = {}) {
 }
 
 function simulatedRouteTarget(route, options = {}) {
+  const encounter = options.encounter || null;
+  const wave = options.wave || pickEncounterWave(encounter) || encounter;
   const cargoPool = pvpTargetItems();
   const vehiclePool = allVehicleItems().filter((vehicle) => vehicleCanUseRoute(vehicle, route));
   const profile = designedNpcTargetProfile(route, options);
-  const filteredCargo = cargoPool.filter((item) => rarityRank(item) <= profile.rarityCeiling);
-  const freighters = vehiclePool.filter((vehicle) => vehicle.vehicleClass === "freighter" && rarityRank(vehicle) <= profile.rarityCeiling);
-  const runners = vehiclePool.filter((vehicle) => vehicle.vehicleClass === "runner" && rarityRank(vehicle) <= profile.rarityCeiling);
-  const filteredVehicles = (profile.difficulty >= 2 ? freighters : [...freighters, ...runners])
-    .filter((vehicle) => rarityRank(vehicle) <= Math.max(0, profile.rarityCeiling));
+  const maxRank = wave ? rarityIndex(wave.rarityCeiling) : profile.rarityCeiling;
+  const difficulty = wave ? wave.difficulty : profile.difficulty;
+  const filteredCargo = cargoPool.filter((item) => rarityRank(item) <= maxRank);
+  const preferredClasses = wave?.vehicleClasses?.length
+    ? wave.vehicleClasses
+    : (difficulty >= 2 ? ["freighter"] : ["freighter", "runner"]);
+  const filteredVehicles = vehiclePool
+    .filter((vehicle) => preferredClasses.includes(vehicle.vehicleClass) && rarityRank(vehicle) <= maxRank);
   const escortPool = vehiclePool
-    .filter((vehicle) => vehicle.vehicleClass === "guardian" && rarityRank(vehicle) <= Math.max(0, profile.rarityCeiling));
+    .filter((vehicle) => vehicle.vehicleClass === "guardian" && rarityRank(vehicle) <= maxRank);
   const cargo = randomFrom(filteredCargo) || starterItems[0];
   const vehicle = randomFrom(filteredVehicles) || randomFrom(vehiclePool) || allVehicleItems()[0];
-  const escort = Math.random() < profile.escortChance ? (randomFrom(escortPool) || null) : null;
+  const escortChance = wave ? wave.escortChance : profile.escortChance;
+  const escort = Math.random() < escortChance ? (randomFrom(escortPool) || null) : null;
   const capacity = Math.max(1, Number(vehicle.capacity || 1));
-  const cargoUnits = Math.max(1, Math.min(capacity, profile.cargoUnits));
+  const cargoUnits = Math.max(1, Math.min(capacity, wave?.cargoUnits || profile.cargoUnits));
   return {
     cargo,
     vehicle,
     escort,
     cargoUnits,
     route,
-    difficulty: profile.difficulty,
-    label: ["Local Courier", "Market Convoy", "Armored Haul", "Arcology Transfer", "Black Ledger Run"][profile.difficulty] || "NPC Convoy",
+    difficulty,
+    label: wave?.label || encounter?.label || ["Local Courier", "Market Convoy", "Armored Haul", "Arcology Transfer", "Black Ledger Run"][difficulty] || "NPC Convoy",
+    encounterId: encounter?.id || null,
   };
 }
 
-function simulatedRouteVehicle(route, preferredClasses = []) {
+function simulatedRouteVehicle(route, preferredClasses = [], options = {}) {
   const vehiclePool = allVehicleItems().filter((vehicle) => vehicleCanUseRoute(vehicle, route));
   const preferred = preferredClasses.length
     ? vehiclePool.filter((vehicle) => preferredClasses.includes(vehicle.vehicleClass))
     : vehiclePool;
   const source = preferred.length ? preferred : vehiclePool;
   const rarityRoll = Math.random();
-  const maxRarity = rarityRoll > 0.97 ? 4 : rarityRoll > 0.88 ? 3 : rarityRoll > 0.68 ? 2 : rarityRoll > 0.38 ? 1 : 0;
+  const maxRarity = Number.isFinite(Number(options.maxRarityRank))
+    ? Number(options.maxRarityRank)
+    : rarityRoll > 0.97 ? 4 : rarityRoll > 0.88 ? 3 : rarityRoll > 0.68 ? 2 : rarityRoll > 0.38 ? 1 : 0;
   const filtered = source.filter((vehicle) => rarityRank(vehicle) <= maxRarity);
   return randomFrom(filtered) || source[0] || allVehicleItems()[0];
 }
@@ -2495,68 +2799,89 @@ function runBattleBuildComparison() {
   };
 }
 
-function resolveInterceptRun(run) {
+function resolveRoutejackNpcEncounter(run, encounterRoll) {
   const route = routeBetween(run.from, run.to) || { to: run.to, miles: run.routeMiles, hours: run.routeHours || 1 };
   run.loot = run.loot || [];
   run.encounters = run.encounters || [];
-  const capacity = routeRunCapacity(run);
-  const encounterLimit = Math.max(1, Math.min(4, Number(run.encounterLimit || Math.max(capacity, Math.round((run.routeHours || 1) * 1.35)))));
-  let stoppedByDefense = false;
-  while (routeRunHasLootRoom(run) && run.encounters.length < encounterLimit) {
-    const target = simulatedRouteTarget(route, { pressure: run.encounters.length + run.loot.length });
-    const settings = routeBattleSettings({
-      from: run.from,
-      to: run.to,
-      attackerVehicle: run.vehicle,
-      attackerSupport1: run.support1 || "none",
-      attackerSupport2: run.support2 || "none",
-      defenderVehicle: target.vehicle.name,
-      defenderEscort1: target.escort?.name || "none",
-      cargo: target.cargo.name,
-      cargoUnits: target.cargoUnits || 1,
-      attackerRole: "routejack",
-      defenderRole: "merchant",
-      attackerTactic: run.tactic || "snatch",
-      defenderTactic: target.escort ? "protect" : "evade",
-      lootPolicy: run.lootPolicy || "upgrade",
+  const encounter = encounterRoll.encounter;
+  const wave = encounterRoll.wave || pickEncounterWave(encounter) || encounter;
+  const target = simulatedRouteTarget(route, { pressure: run.encounters.length + run.loot.length, encounter, wave });
+  const settings = routeBattleSettings({
+    from: run.from,
+    to: run.to,
+    attackerVehicle: run.vehicle,
+    attackerSupport1: run.support1 || "none",
+    attackerSupport2: run.support2 || "none",
+    defenderVehicle: target.vehicle.name,
+    defenderEscort1: target.escort?.name || "none",
+    cargo: target.cargo.name,
+    cargoUnits: target.cargoUnits || 1,
+    attackerRole: "routejack",
+    defenderRole: "merchant",
+    attackerTactic: run.tactic || "snatch",
+    defenderTactic: target.escort ? "protect" : "evade",
+    lootPolicy: run.lootPolicy || "upgrade",
+  });
+  const battleRun = simulateAutoBattleRun(settings, route);
+  const record = recordRouteBattle({
+    kind: "routejack-npc",
+    title: `Routejack raid: ${target.label} carrying ${target.cargo.name}`,
+    from: run.from,
+    to: run.to,
+    settings,
+    route,
+    run: battleRun,
+    relatedShipments: [run],
+  });
+  run.encounters.push({
+    cargo: target.cargo.name,
+    vehicle: target.vehicle.name,
+    escort: target.escort?.name || null,
+    target: target.label,
+    cargoUnits: target.cargoUnits || 1,
+    success: battleRun.outcome === "stolen",
+    battleId: record.id,
+  });
+  if (battleRun.outcome === "stolen") {
+    let keptFromTarget = 0;
+    Array.from({ length: target.cargoUnits || 1 }).forEach(() => {
+      const result = addLootToRun(run, target.cargo.name);
+      if (result.kept && result.replaced) addShipmentEvent(run, `Jettisoned ${result.replaced} to keep ${target.cargo.name}.`);
+      if (result.kept) {
+        keptFromTarget += 1;
+        recordStolenGood(target.cargo.name, 1, run.from, run.to, state.player, record.id, { interceptedVehicle: target.vehicle.name, owner: "NPC Merchant" });
+      }
     });
-    const battleRun = simulateAutoBattleRun(settings, route);
-    const record = recordRouteBattle({
-      kind: "routejack-npc",
-      title: `Routejack raid: ${target.label} carrying ${target.cargo.name}`,
-      from: run.from,
-      to: run.to,
-      settings,
-      route,
-      run: battleRun,
-      relatedShipments: [run],
-    });
-    run.encounters.push({
-      cargo: target.cargo.name,
-      vehicle: target.vehicle.name,
-      escort: target.escort?.name || null,
-      target: target.label,
-      cargoUnits: target.cargoUnits || 1,
-      success: battleRun.outcome === "stolen",
-      battleId: record.id,
-    });
-    if (battleRun.outcome === "stolen") {
-      let keptFromTarget = 0;
-      Array.from({ length: target.cargoUnits || 1 }).forEach(() => {
-        const result = addLootToRun(run, target.cargo.name);
-        if (result.kept && result.replaced) addShipmentEvent(run, `Jettisoned ${result.replaced} to keep ${target.cargo.name}.`);
-        if (result.kept) {
-          keptFromTarget += 1;
-          recordStolenGood(target.cargo.name, 1, run.from, run.to, state.player, record.id, { interceptedVehicle: target.vehicle.name, owner: "NPC Merchant" });
-        }
-      });
-      addShipmentEvent(run, `Broke ${target.label} and kept ${keptFromTarget}/${target.cargoUnits || 1} cargo unit${(target.cargoUnits || 1) === 1 ? "" : "s"}. Battle replay ${record.id} recorded.`);
-    } else {
-      stoppedByDefense = true;
-      addShipmentEvent(run, `${target.label} repelled the raid. Battle replay ${record.id} recorded.`);
-      break;
+    addShipmentEvent(run, `Found ${target.label} and kept ${keptFromTarget}/${target.cargoUnits || 1} cargo unit${(target.cargoUnits || 1) === 1 ? "" : "s"}. Battle replay ${record.id} recorded.`);
+    state.dispatchNotice = {
+      type: "success",
+      shipmentId: run.id,
+      text: `Routejack convoy hit ${target.label}`,
+      detail: `${keptFromTarget ? `Kept ${keptFromTarget} cargo` : "No cargo kept"} on ${routeLabel(run.from, run.to)}.`,
+      at: Date.now(),
+    };
+    if (!routeRunHasLootRoom(run) || run.encounters.length >= Number(run.encounterLimit || 1)) {
+      run.arrivesAt = Date.now();
     }
+    return true;
   }
+  run.forcedOffRoute = true;
+  run.arrivesAt = Date.now();
+  addShipmentEvent(run, `${target.label} repelled the raid. Battle replay ${record.id} recorded.`);
+  state.dispatchNotice = {
+    type: "warning",
+    shipmentId: run.id,
+    text: `Routejack convoy was forced off route`,
+    detail: `${target.label} repelled the raid on ${routeLabel(run.from, run.to)}.`,
+    at: Date.now(),
+  };
+  return true;
+}
+
+function resolveInterceptRun(run) {
+  run.loot = run.loot || [];
+  run.encounters = run.encounters || [];
+  const capacity = routeRunCapacity(run);
   routeRunVehicles(run).forEach((vehicleName) => addItem(vehicleName, 1, run.from, true));
   run.resolvedAt = Date.now();
   run.encounteredCargo = run.encounters[0]?.cargo || "none";
@@ -2565,7 +2890,7 @@ function resolveInterceptRun(run) {
     run.loot.forEach((itemName) => {
       addItem(itemName, 1, run.from, true);
     });
-    addShipmentEvent(run, `Returned with ${run.loot.length}/${capacity} stolen item${run.loot.length === 1 ? "" : "s"} from ${run.encounters.length} encounter${run.encounters.length === 1 ? "" : "s"}${stoppedByDefense ? " before being forced off route" : ""}.`);
+    addShipmentEvent(run, `Returned with ${run.loot.length}/${capacity} stolen item${run.loot.length === 1 ? "" : "s"} from ${run.encounters.length} encounter${run.encounters.length === 1 ? "" : "s"}${run.forcedOffRoute ? " before being forced off route" : ""}.`);
     addPvpLog(`Routejack raid returned from ${districtById(run.from).name} to ${districtById(run.to).name} with ${run.loot.length} stolen item${run.loot.length === 1 ? "" : "s"}.`);
     addFeed(state.player, `loot x${run.loot.length}`, itemByName(run.loot[0]).iconName);
     return true;
@@ -2589,9 +2914,44 @@ function markRecoveredStolenGood(itemName, hunter, battleId = null) {
   return entry;
 }
 
+function processRouteEncounterTick(shipment, now = Date.now()) {
+  if (shipment.status !== "in-transit") return false;
+  const route = routeBetween(shipment.from, shipment.to);
+  if (!route) return false;
+  if (!shipment.lastEncounterCheckAt) shipment.lastEncounterCheckAt = shipment.startedAt || now;
+  const endAt = Math.min(now, shipment.arrivesAt);
+  let cursor = Math.min(shipment.lastEncounterCheckAt, endAt);
+  let changed = false;
+
+  while (cursor < endAt && shipment.status === "in-transit") {
+    const nextCursor = Math.min(endAt, cursor + 3600000);
+    const elapsedMs = Math.max(0, nextCursor - cursor);
+    shipment.lastEncounterCheckAt = nextCursor;
+    cursor = nextCursor;
+    if (elapsedMs <= 0) continue;
+    if (shipment.kind === "intercept" && (!routeRunHasLootRoom(shipment) || (shipment.encounters || []).length >= Number(shipment.encounterLimit || 1))) {
+      shipment.arrivesAt = Math.min(shipment.arrivesAt, now);
+      changed = true;
+      break;
+    }
+    const encounterRoll = rollRouteEncounter(shipment, route, elapsedMs);
+    if (!encounterRoll) continue;
+    changed = true;
+    if (shipment.kind === "intercept") resolveRoutejackNpcEncounter(shipment, encounterRoll);
+    else resolveMerchantTimedEncounter(shipment, encounterRoll);
+    if (shipment.kind === "intercept" && (!routeRunHasLootRoom(shipment) || (shipment.encounters || []).length >= Number(shipment.encounterLimit || 1))) {
+      shipment.arrivesAt = Math.min(shipment.arrivesAt, now);
+    }
+  }
+  return changed;
+}
+
 function processShipments() {
   const before = shipmentStateSignature();
   const now = Date.now();
+  state.shipments
+    .filter((shipment) => shipment.status === "in-transit")
+    .forEach((shipment) => processRouteEncounterTick(shipment, now));
   state.shipments
     .filter((shipment) => (shipment.status === "in-transit" && shipment.arrivesAt <= now) || shipment.status === "blocked")
     .forEach((shipment) => {
@@ -2641,7 +3001,7 @@ function createShipment(cargoLoad, vehicleName, destinationId, escortName = "non
   if (escort) removeItem(escort.name, 1, cityId);
   const travelHours = routeTravelHours(route, vehicle, currentRole().shipmentSpeedBonus || 0);
   const travelMs = Math.max(60000, travelHours * 3600000);
-  const interceptorPressure = npcRouteTrafficOnRoute(cityId, destinationId, "routejack").length;
+  const now = Date.now();
   state.nextShipmentRiskReduction = 0;
   const shipment = {
     id: nextMarketId("ship"),
@@ -2655,21 +3015,28 @@ function createShipment(cargoLoad, vehicleName, destinationId, escortName = "non
     escortVehicle: escort?.name || null,
     routeHours: travelHours,
     routeMiles: routeDistance(route),
-    interceptorPressure,
+    encounterChance: null,
+    encounterRatePerHour: null,
     riskChance: null,
     profession: state.role,
     riskChecked: false,
-    events: [`${new Date().toLocaleTimeString()} Dispatched ${cargoUnits}/${capacity} cargo slot${capacity === 1 ? "" : "s"}${escort ? ` with ${escort.name} escort` : ""} through ${routeKind(route)} route traffic. ETA ${new Date(Date.now() + travelMs).toLocaleTimeString()}.`],
-    startedAt: Date.now(),
-    arrivesAt: Date.now() + travelMs,
+    events: [`${new Date().toLocaleTimeString()} Dispatched ${cargoUnits}/${capacity} cargo slot${capacity === 1 ? "" : "s"}${escort ? ` with ${escort.name} escort` : ""} through the ${routeKind(route)} route. Route encounters roll while traveling. ETA ${new Date(now + travelMs).toLocaleTimeString()}.`],
+    startedAt: now,
+    lastEncounterCheckAt: now,
+    arrivesAt: now + travelMs,
     status: "in-transit",
   };
+  shipment.encounterRatePerHour = routeEncounterRatePerHour(shipment, route);
+  shipment.encounterChance = routeEncounterHourlyChance(shipment, route);
   state.shipments.unshift(shipment);
+  state.shipmentCargoLoad = {};
+  state.shipmentCargoLoadTouched = false;
+  state.shipmentCargoQty = 1;
   state.dispatchNotice = {
     type: "success",
     shipmentId: shipment.id,
     text: `${shipmentCargoShortLabel(shipment)} launched toward ${districtById(destinationId).name}`,
-    detail: `${vehicle.name}${escort ? ` + ${escort.name}` : ""} - arrives about ${new Date(shipment.arrivesAt).toLocaleTimeString()} (${formatRouteTime(travelHours)})`,
+    detail: `${vehicle.name}${escort ? ` + ${escort.name}` : ""} - arrives about ${new Date(shipment.arrivesAt).toLocaleTimeString()} (${formatRouteTime(travelHours)}). Encounter ${shipment.encounterChance}%/hr.`,
     at: Date.now(),
   };
   trackContract("shipmentsSent", 1);
@@ -2701,7 +3068,8 @@ function attemptIntercept() {
   const travelMs = Math.max(60000, travelHours * 3600000);
   const capacity = convoyNames.reduce((sum, name) => sum + Math.max(1, Number(itemByName(name).capacity || 1)), 0);
   const encounterLimit = Math.max(1, Math.min(4, Math.max(capacity, Math.round(travelHours * 1.35))));
-  state.shipments.unshift({
+  const now = Date.now();
+  const run = {
     id: nextMarketId("intercept"),
     kind: "intercept",
     from: state.district,
@@ -2717,11 +3085,15 @@ function attemptIntercept() {
     routeHours: travelHours,
     routeMiles: routeDistance(route),
     profession: state.role,
-    events: [`${new Date().toLocaleTimeString()} Routejack raid launched with ${convoyNames.join(" + ")} into ${routeKind(route)} route traffic.`],
-    startedAt: Date.now(),
-    arrivesAt: Date.now() + travelMs,
+    events: [`${new Date().toLocaleTimeString()} Routejack raid launched with ${convoyNames.join(" + ")} to hunt ${routeKind(route)} route encounters while traveling.`],
+    startedAt: now,
+    lastEncounterCheckAt: now,
+    arrivesAt: now + travelMs,
     status: "in-transit",
-  });
+  };
+  run.encounterRatePerHour = routeEncounterRatePerHour(run, route);
+  run.encounterChance = routeEncounterHourlyChance(run, route);
+  state.shipments.unshift(run);
   addPvpLog(`Launched ${convoyNames.join(" + ")} to raid ${districtById(state.district).name} to ${districtById(route.to).name}.`);
   addFeed(state.player, `routejack raid`, vehicle.iconName);
   state.activeView = "shipments";
@@ -2746,7 +3118,13 @@ function advanceGameTime(hours) {
     .forEach((shipment) => {
       shipment.startedAt -= elapsed;
       shipment.arrivesAt -= elapsed;
+      if (shipment.lastEncounterCheckAt) shipment.lastEncounterCheckAt -= elapsed;
     });
+  if (state.routeScanUntil) state.routeScanUntil -= elapsed;
+  Object.values(state.routeClearances || {}).forEach((clearance) => {
+    clearance.clearedUntil -= elapsed;
+  });
+  state.routeClearances = normalizeRouteClearances(state.routeClearances);
   processShipments();
 }
 
@@ -3758,4 +4136,3 @@ function runAction(action, payload = {}) {
   }
   return false;
 }
-

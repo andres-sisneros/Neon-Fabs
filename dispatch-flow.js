@@ -1,5 +1,5 @@
 (function installDispatchFlow() {
-  if (typeof dispatchWizardControls === "function") {
+  if (typeof window.dispatchWizardControls === "function") {
     render();
     return;
   }
@@ -62,6 +62,8 @@
   window.routeRoleActive = routeRoleActive;
   window.dispatchStepsForRole = dispatchStepsForRole;
   window.currentDispatchStep = currentDispatchStep;
+  window.dispatchWizardStepper = dispatchWizardStepper;
+  window.dispatchWizardControls = dispatchWizardControls;
 
   const baseRenderProfileCommandDeck = renderProfileCommandDeck;
   renderProfileCommandDeck = function renderProfileCommandDeckOverride() {
@@ -102,28 +104,41 @@
         return rarityRank(b.item) - rarityRank(a.item) || a.item.name.localeCompare(b.item.name);
       });
     const visibleCargo = cargoMatches.slice(0, 12);
-    const selectedCargoEntry = shippableCargo.find(({ item }) => item.name === state.shipmentCargo);
-    const selectedCargo = selectedCargoEntry?.item || null;
-    const selectedCargoCount = selectedCargoEntry?.count || 0;
-    const maxCargoQty = Math.min(selectedCargoCount, Math.max(1, selectedVehicleCapacity));
-    const cargoQty = Math.min(maxCargoQty || 1, Math.max(1, Math.floor(Number(state.shipmentCargoQty || 1))));
-    state.shipmentCargoQty = cargoQty || 1;
+    const loadedCargo = shipmentCargoLoadEntries(state.district, selectedVehicleCapacity || Infinity);
+    const loadedCargoMap = new Map(loadedCargo.map((entry) => [entry.name, entry.qty]));
+    const loadedUnits = shipmentCargoLoadUnits(loadedCargo);
+    const primaryCargo = loadedCargo[0] ? itemByName(loadedCargo[0].name) : null;
+    const hiddenCargoInputs = loadedCargo
+      .map((entry) => `<input type="hidden" data-ship-cargo="${entry.name}" value="${entry.qty}">`)
+      .join("");
+    const cargoManifest = loadedCargo.length
+      ? loadedCargo.map((entry) => `${entry.qty}x ${entry.name}`).join(", ")
+      : "No cargo loaded";
     const cargoPickerRows = visibleCargo.map(({ item, count }) => {
       const localBid = highestBid(state.district, item.name);
-      return `<button type="button" class="cargo-pick ${state.shipmentCargo === item.name ? "active" : ""}" data-cargo-pick="${item.name}">
-        <span class="item-name">${icon(item.iconName, item.rarity)} ${item.name}</span>
-        <em>x${count}${localBid ? ` - bid ${formatCredits(localBid.price)}` : ""}</em>
-      </button>`;
+      const loadedQty = loadedCargoMap.get(item.name) || 0;
+      const canAdd = loadedUnits < selectedVehicleCapacity && loadedQty < count;
+      return `<div class="cargo-pick ${loadedQty ? "active" : ""}">
+        <button type="button" class="cargo-pick-main" data-cargo-pick="${item.name}">
+          <span class="item-name">${icon(item.iconName, item.rarity)} ${item.name}</span>
+          <em>x${count}${localBid ? ` - bid ${formatCredits(localBid.price)}` : ""}</em>
+        </button>
+        <span class="cargo-load-controls">
+          <button type="button" data-cargo-load="${item.name}" data-cargo-load-delta="-1" ${loadedQty <= 0 ? "disabled" : ""}>-</button>
+          <strong>${loadedQty}</strong>
+          <button type="button" data-cargo-load="${item.name}" data-cargo-load-delta="1" ${canAdd ? "" : "disabled"}>+</button>
+        </span>
+      </div>`;
     }).join("");
     const selectedTravelHours = selectedRoute && selectedVehicle?.category === "vehicle"
       ? routeTravelHours(selectedRoute, selectedVehicle, currentRole().shipmentSpeedBonus || 0)
       : null;
-    const freightEstimate = selectedRoute && selectedVehicle?.category === "vehicle" && selectedCargo
+    const freightEstimate = selectedRoute && selectedVehicle?.category === "vehicle" && loadedCargo.length
       ? merchantFreightPayout({
         from: state.district,
         to: selectedRoute.to,
-        cargos: [{ name: selectedCargo.name, qty: Math.max(1, cargoQty || 1) }],
-        cargoUnits: Math.max(1, cargoQty || 1),
+        cargos: loadedCargo,
+        cargoUnits: loadedUnits,
         capacity: selectedVehicleCapacity,
         routeMiles: routeDistance(selectedRoute),
         profession: "merchant",
@@ -132,15 +147,15 @@
     const likelyRaider = selectedRoute
       ? allVehicleItems().find((item) => item.vehicleClass === "interceptor" && vehicleCanUseRoute(item, selectedRoute)) || allVehicleItems().find((item) => vehicleCanUseRoute(item, selectedRoute))
       : null;
-    const battleSettings = likelyRaider && selectedVehicle && selectedCargo
+    const battleSettings = likelyRaider && selectedVehicle && primaryCargo
       ? routeBattleSettings({
         from: state.district,
         to: selectedRoute.to,
         attackerVehicle: likelyRaider.name,
         defenderVehicle: selectedVehicle.name,
         defenderEscort1: selectedEscort?.name || "none",
-        cargo: selectedCargo.name,
-        cargoUnits: Math.max(1, cargoQty || 1),
+        cargo: primaryCargo.name,
+        cargoUnits: Math.max(1, loadedUnits || 1),
         attackerRole: "routejack",
         defenderRole: "merchant",
         attackerTactic: "snatch",
@@ -148,14 +163,24 @@
       })
       : null;
     const defenders = battleSettings ? makeBattleTeams(battleSettings, selectedRoute).defenders : [];
-    const defenderSummary = defenders.length ? defenders.map((unit) => `${unit.role}: ${unit.name}`).join(" + ") : "Select cargo and vehicle";
-    const detectionPreview = likelyRaider && selectedVehicle ? routeDetectionChance(likelyRaider, selectedVehicle, cargoQty || 1) : null;
-    const canShipSelected = canShipByRole && selectedCargo && cargoQty > 0 && routeVehicles.length && destinationOptions && selectedVehicle?.category === "vehicle" && vehicleCanUseRoute(selectedVehicle, selectedRoute);
+    const defenderSummary = defenders.length ? defenders.map((unit) => `${unit.role}: ${unit.name}`).join(" + ") : "Load cargo and choose a vehicle";
+    const previewShipment = selectedRoute && selectedVehicle ? {
+      from: state.district,
+      to: selectedRoute.to,
+      vehicle: selectedVehicle.name,
+      cargos: loadedCargo.length ? loadedCargo : [{ name: "Common Starter Component A", qty: 1 }],
+      cargoUnits: loadedUnits || 1,
+      capacity: selectedVehicleCapacity || 1,
+      escortVehicle: selectedEscort?.name || null,
+      profession: "merchant",
+    } : null;
+    const encounterPreview = previewShipment ? routeEncounterHourlyChance(previewShipment, selectedRoute) : null;
+    const canShipSelected = canShipByRole && loadedUnits > 0 && loadedUnits <= selectedVehicleCapacity && routeVehicles.length && destinationOptions && selectedVehicle?.category === "vehicle" && vehicleCanUseRoute(selectedVehicle, selectedRoute);
     const step = currentDispatchStep();
     const stepComplete = {
       route: Boolean(selectedRoute),
       vehicle: Boolean(selectedVehicle?.category === "vehicle" && vehicleCanUseRoute(selectedVehicle, selectedRoute)),
-      cargo: Boolean(selectedCargo && cargoQty > 0),
+      cargo: Boolean(loadedUnits > 0 && loadedUnits <= selectedVehicleCapacity),
       confirm: canShipSelected,
     };
     const stepBody = {
@@ -175,32 +200,25 @@
         </div>
       </section>`,
       cargo: `<section class="dispatch-wizard-step cargo-load-panel">
-        <div class="card-row"><h3>Load Cargo</h3><span class="pill">${selectedVehicleCapacity || 0} slots</span></div>
+        <div class="card-row"><h3>Load Cargo</h3><span class="pill">${loadedUnits}/${selectedVehicleCapacity || 0} slots</span></div>
         <label class="search-field cargo-search"><span>Find Cargo</span><input id="dispatchCargoSearch" type="search" value="${state.dispatchCargoSearch}" placeholder="Search local inventory"></label>
+        ${hiddenCargoInputs}
         <div class="cargo-picker-grid">${cargoPickerRows || `<p class="muted">No cargo matches.</p>`}</div>
-        <label class="cargo-load-row selected-cargo-row">
-          <span class="item-name">${selectedCargo ? `${icon(selectedCargo.iconName, selectedCargo.rarity)} ${selectedCargo.name}` : "No cargo selected"}</span>
-          <em>owned ${selectedCargoCount}</em>
-          <span class="cargo-qty-stepper">
-            <button type="button" data-cargo-qty="-1" ${cargoQty <= 1 ? "disabled" : ""}>-</button>
-            <input type="number" min="1" max="${maxCargoQty}" step="1" value="${cargoQty || 1}" data-ship-cargo="${selectedCargo?.name || ""}" id="shipmentCargoQty" readonly ${selectedCargo ? "" : "disabled"}>
-            <button type="button" data-cargo-qty="1" ${cargoQty >= maxCargoQty ? "disabled" : ""}>+</button>
-          </span>
-        </label>
+        <div class="cargo-load-row selected-cargo-row"><span>${cargoManifest}</span><em>${selectedVehicleCapacity ? `${Math.max(0, selectedVehicleCapacity - loadedUnits)} slots open` : "Choose vehicle"}</em></div>
       </section>`,
       confirm: `<section class="dispatch-wizard-step">
         <div class="card-row"><h3>Ready To Launch</h3><span class="pill">${selectedRoute ? `${routeDistance(selectedRoute)}mi ${routeKind(selectedRoute)}` : "No route"}</span></div>
         <div class="dispatch-summary-strip">
           <div class="side-metric"><span>Route</span><strong>${selectedRoute ? `${currentDistrict().name} -> ${districtById(selectedRoute.to).name}` : "No route"}</strong></div>
           <div class="side-metric"><span>Travel</span><strong>${selectedTravelHours ? formatRouteTime(selectedTravelHours) : "No route"}</strong></div>
-          <div class="side-metric"><span>Cargo</span><strong>${selectedCargo ? `${cargoQty}x ${selectedCargo.name}` : "None"}</strong></div>
+          <div class="side-metric"><span>Cargo</span><strong>${loadedUnits ? `${loadedUnits}/${selectedVehicleCapacity} slots` : "None"}</strong></div>
           <div class="side-metric"><span>Freight Pay</span><strong>${freightEstimate ? formatCredits(freightEstimate) : "No cargo"}</strong></div>
           <div class="side-metric"><span>Profile</span><strong>${selectedVehicle?.category === "vehicle" ? `${profileBand(vehicleProfileScore(selectedVehicle))} (${vehicleProfileScore(selectedVehicle)})` : "No vehicle"}</strong></div>
-          <div class="side-metric"><span>Encounter</span><strong>${detectionPreview ? `${detectionPreview}% baseline` : "Unknown"}</strong></div>
+          <div class="side-metric"><span>Encounter</span><strong>${encounterPreview !== null ? `${encounterPreview}%/hr` : "Unknown"}</strong></div>
         </div>
         <div class="battle-convoy-preview compact">
           <div class="card-row"><strong>Convoy Readiness</strong><span class="pill">${selectedVehicle?.name || "No vehicle"}</span></div>
-          <p class="muted">${defenderSummary}. Hidden NPC encounters only become certain through scanner intel.</p>
+          <p class="muted">${cargoManifest}. ${defenderSummary}.</p>
         </div>
       </section>`,
     }[step];
@@ -232,7 +250,18 @@
     const routejackPreviewRun = { vehicle: selectedVehicle?.name, support1: state.pvpSupport1, support2: state.pvpSupport2 };
     const patrolCapacity = selectedVehicle?.category === "vehicle" ? routeRunCapacity(routejackPreviewRun) : 0;
     const patrolHours = selectedRoute && selectedVehicle?.category === "vehicle" ? routeTravelHours(selectedRoute, selectedVehicle) : 0;
-    const encounterEstimate = selectedRoute ? Math.max(1, Math.min(4, Math.max(patrolCapacity, Math.round(patrolHours * 1.35)))) : 0;
+    const routejackPreview = selectedRoute && selectedVehicle?.category === "vehicle" ? {
+      kind: "intercept",
+      from: state.district,
+      to: selectedRoute.to,
+      vehicle: selectedVehicle.name,
+      support1: state.pvpSupport1,
+      support2: state.pvpSupport2,
+      loot: [],
+      lootPolicy: state.pvpLootPolicy,
+      capacity: patrolCapacity,
+    } : null;
+    const encounterEstimate = routejackPreview ? routeEncounterHourlyChance(routejackPreview, selectedRoute) : null;
     const canLaunch = routes.length && availableVehicles.length && selectedVehicle?.category === "vehicle";
     const step = currentDispatchStep();
     const convoySupport = `<div class="dispatch-builder-section subtle">
@@ -260,7 +289,7 @@
       route: `<section class="dispatch-wizard-step">${renderRoutePixelScene(selectedRoute, { compact: false })}<div class="card-row"><h3>Choose Raid Route</h3><span class="pill">${currentDistrict().name}</span></div>${dispatchRouteCards(routes, state.pvpRoute, "data-raid-route", selectedVehicle)}</section>`,
       vehicle: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Choose Convoy</h3><span class="pill">${patrolCapacity} loot slots</span></div>${dispatchVehicleCards(availableVehicles, state.pvpVehicle, "data-raid-vehicle", "No compatible raid vehicles")}${convoySupport}</section>`,
       tactic: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Set Raid Plan</h3><span class="pill">${battleAttackerTactics[state.routejackTactic] || "Hit Cargo First"}</span></div>${tacticChoices}<div class="dispatch-builder-section subtle"><div class="card-row"><h3>Loot Hold</h3><span class="pill">${patrolCapacity} slots</span></div>${lootChoices}</div></section>`,
-      confirm: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Ready To Launch</h3><span class="pill">${selectedRoute ? `${routeDistance(selectedRoute)}mi ${routeKind(selectedRoute)}` : "No route"}</span></div><div class="dispatch-summary-strip"><div class="side-metric"><span>Route</span><strong>${selectedRoute ? `${currentDistrict().name} -> ${districtById(selectedRoute.to).name}` : "No route"}</strong></div><div class="side-metric"><span>Raid Time</span><strong>${patrolHours ? formatRouteTime(patrolHours) : "No route"}</strong></div><div class="side-metric"><span>Convoy</span><strong>${[selectedVehicle?.name, state.pvpSupport1, state.pvpSupport2].filter((name) => name && name !== "none").join(" + ") || "No vehicles"}</strong></div><div class="side-metric"><span>Capacity</span><strong>${patrolCapacity || "Need vehicle"}</strong></div><div class="side-metric"><span>Targets</span><strong>${encounterEstimate || "Need route"}</strong></div><div class="side-metric"><span>Sensor</span><strong>${selectedVehicle?.category === "vehicle" ? vehicleSensorScore(selectedVehicle) : "No vehicle"}</strong></div></div></section>`,
+      confirm: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Ready To Launch</h3><span class="pill">${selectedRoute ? `${routeDistance(selectedRoute)}mi ${routeKind(selectedRoute)}` : "No route"}</span></div><div class="dispatch-summary-strip"><div class="side-metric"><span>Route</span><strong>${selectedRoute ? `${currentDistrict().name} -> ${districtById(selectedRoute.to).name}` : "No route"}</strong></div><div class="side-metric"><span>Raid Time</span><strong>${patrolHours ? formatRouteTime(patrolHours) : "No route"}</strong></div><div class="side-metric"><span>Convoy</span><strong>${[selectedVehicle?.name, state.pvpSupport1, state.pvpSupport2].filter((name) => name && name !== "none").join(" + ") || "No vehicles"}</strong></div><div class="side-metric"><span>Capacity</span><strong>${patrolCapacity || "Need vehicle"}</strong></div><div class="side-metric"><span>Targets</span><strong>${encounterEstimate !== null ? `${encounterEstimate}%/hr` : "Need route"}</strong></div><div class="side-metric"><span>Sensor</span><strong>${selectedVehicle?.category === "vehicle" ? vehicleSensorScore(selectedVehicle) : "No vehicle"}</strong></div></div></section>`,
     }[step];
     return `<div class="shipment-form dispatch-wizard routejack-builder">${dispatchWizardStepper(stepComplete[step])}${stepBody}${dispatchWizardControls({ canAdvance: stepComplete[step], canLaunch, launchAction: "attempt-intercept" })}</div>`;
   };

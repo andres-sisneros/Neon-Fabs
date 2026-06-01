@@ -10,6 +10,14 @@ const screenTitle = document.querySelector("#screenTitle");
 const backButton = document.querySelector("#backButton");
 let searchRenderTimer = null;
 
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function viewTitle() {
   return {
     admin: "Admin",
@@ -757,6 +765,49 @@ function dispatchChoiceCard({ active = false, disabled = false, attr = "", title
   </button>`;
 }
 
+function routePreviewShipment(route, selectedVehicle = null) {
+  const fallbackVehicle = selectedVehicle?.category === "vehicle" && vehicleCanUseRoute(selectedVehicle, route)
+    ? selectedVehicle
+    : allVehicleItems().find((vehicle) => vehicleCanUseRoute(vehicle, route));
+  if (!fallbackVehicle) return null;
+  if (state.role === "routejack") {
+    return {
+      kind: "intercept",
+      from: state.district,
+      to: route.to,
+      vehicle: fallbackVehicle.name,
+      support1: state.pvpSupport1 || "none",
+      support2: state.pvpSupport2 || "none",
+      loot: [],
+      lootPolicy: state.pvpLootPolicy || "upgrade",
+      capacity: Math.max(1, Number(fallbackVehicle.capacity || 1)),
+    };
+  }
+  return {
+    from: state.district,
+    to: route.to,
+    vehicle: fallbackVehicle.name,
+    cargo: "Common Starter Component A",
+    cargos: [{ name: "Common Starter Component A", qty: 1 }],
+    cargoUnits: 1,
+    capacity: Math.max(1, Number(fallbackVehicle.capacity || 1)),
+    escortVehicle: null,
+    profession: "merchant",
+  };
+}
+
+function routeEncounterRouteDetail(route, selectedVehicle = null) {
+  const parts = [];
+  const sample = routePreviewShipment(route, selectedVehicle);
+  if (sample) {
+    const label = state.role === "routejack" ? "targets" : "risk";
+    parts.push(`${routeEncounterHourlyChance(sample, route)}%/hr ${label}`);
+  }
+  const clearance = routeClearanceSummary(state.district, route.to);
+  if (clearance) parts.push(clearance);
+  return parts.join(" - ");
+}
+
 function dispatchRouteCards(routes, selectedTo, dataAttr, selectedVehicle = null) {
   if (!routes.length) return `<div class="dispatch-empty-strip"><strong>No connected routes</strong><span>This city has no available exits yet.</span></div>`;
   return `<div class="dispatch-choice-grid route-choice-grid">${routes.map((route) => {
@@ -768,7 +819,7 @@ function dispatchRouteCards(routes, selectedTo, dataAttr, selectedVehicle = null
       attr: `${dataAttr}="${route.to}"`,
       title: route.district.name,
       meta: `${routeDistance(route)}mi ${routeKind(route)}`,
-      detail: `${districtById(state.district).name} route${travel}`,
+      detail: `${districtById(state.district).name} route${travel}${routeEncounterRouteDetail(route, selectedVehicle) ? ` - ${routeEncounterRouteDetail(route, selectedVehicle)}` : ""}`,
       iconName: routeKind(route) === "water" ? "cell" : "data",
       rarity: routeKind(route) === "water" ? "blue" : "green",
     });
@@ -887,7 +938,18 @@ function renderCargoDispatchForm() {
   const defenderSummary = defenders.length
     ? defenders.map((unit) => `${unit.role}: ${unit.name}`).join(" + ")
     : "Select cargo and vehicle";
-  const detectionPreview = likelyRaider && selectedVehicle ? routeDetectionChance(likelyRaider, selectedVehicle, cargoQty || 1) : null;
+  const previewShipment = selectedRoute && selectedVehicle && selectedCargo ? {
+    from: state.district,
+    to: selectedRoute.to,
+    vehicle: selectedVehicle.name,
+    cargo: selectedCargo.name,
+    cargos: [{ name: selectedCargo.name, qty: Math.max(1, cargoQty || 1) }],
+    cargoUnits: Math.max(1, cargoQty || 1),
+    capacity: selectedVehicleCapacity || 1,
+    escortVehicle: selectedEscort?.name || null,
+    profession: "merchant",
+  } : null;
+  const encounterPreview = previewShipment ? routeEncounterHourlyChance(previewShipment, selectedRoute) : null;
   const canShipSelected = canShipByRole && selectedCargo && cargoQty > 0 && routeVehicles.length && destinationOptions && selectedVehicle?.category === "vehicle" && vehicleCanUseRoute(selectedVehicle, selectedRoute);
   return `<div class="shipment-form cargo-dispatch-form dispatch-builder">
     <section class="dispatch-builder-section">
@@ -924,7 +986,7 @@ function renderCargoDispatchForm() {
       <div class="side-metric"><span>Travel</span><strong>${selectedTravelHours ? formatRouteTime(selectedTravelHours) : "No route"}</strong></div>
       <div class="side-metric"><span>Freight Pay</span><strong>${freightEstimate ? formatCredits(freightEstimate) : "No cargo"}</strong></div>
       <div class="side-metric"><span>Profile</span><strong>${selectedVehicle?.category === "vehicle" ? `${profileBand(vehicleProfileScore(selectedVehicle))} (${vehicleProfileScore(selectedVehicle)})` : "No vehicle"}</strong></div>
-      <div class="side-metric"><span>Encounter</span><strong>${detectionPreview ? `${detectionPreview}% baseline` : "Unknown"}</strong></div>
+      <div class="side-metric"><span>Encounter</span><strong>${encounterPreview !== null ? `${encounterPreview}%/hr` : "Unknown"}</strong></div>
     </div>
     <div class="battle-convoy-preview compact">
       <div class="card-row"><strong>Convoy Readiness</strong><span class="pill">${selectedRoute ? `${routeDistance(selectedRoute)}mi ${routeKind(selectedRoute)}` : "No route"}</span></div>
@@ -1001,41 +1063,78 @@ function renderNpcRouteTraffic() {
 
 function renderAdminRouteTrafficPanel() {
   const now = Date.now();
-  const traffic = (state.npcRouteTraffic || [])
-    .filter((entry) => entry.status === "active")
-    .sort((a, b) => a.endsAt - b.endsAt);
-  const counts = ["merchant", "routejack"].map((kind) => {
-    const count = traffic.filter((entry) => entry.kind === kind).length;
-    return `<div class="side-metric"><span>${npcTrafficKindLabel(kind)}</span><strong>${count}</strong></div>`;
+  const activeJobs = (state.shipments || [])
+    .filter((entry) => entry.status === "in-transit")
+    .sort((a, b) => a.arrivesAt - b.arrivesAt);
+  const counts = ["merchant", "routejack"].map((role) => {
+    const count = activeJobs.filter((entry) => entry.profession === role || (role === "routejack" && entry.kind === "intercept")).length;
+    return `<div class="side-metric"><span>${roles[role].label}</span><strong>${count}</strong></div>`;
   }).join("");
-  const rows = traffic.length
-    ? traffic.map((entry) => {
-      const total = Math.max(1, entry.endsAt - entry.startedAt);
+  const rows = activeJobs.length
+    ? activeJobs.map((entry) => {
+      const total = Math.max(1, entry.arrivesAt - entry.startedAt);
       const progress = Math.min(100, Math.max(0, ((now - entry.startedAt) / total) * 100));
-      return `<div class="admin-traffic-row ${entry.kind}">
-        <span>${npcTrafficKindLabel(entry.kind)}</span>
-        <strong>${entry.name}</strong>
+      const role = entry.kind === "intercept" ? "routejack" : entry.profession || "merchant";
+      return `<div class="admin-traffic-row ${role}">
+        <span>${roles[role]?.label || "Route Job"}</span>
+        <strong>${state.player}</strong>
         <em>${districtById(entry.from).name} -> ${districtById(entry.to).name}</em>
-        <span>${entry.vehicle}</span>
-        <span>${formatPower(Math.max(0, entry.endsAt - now) / 1000)}</span>
+        <span>${entry.vehicle}${entry.escortVehicle ? ` + ${entry.escortVehicle}` : ""}</span>
+        <span>${formatPower(Math.max(0, entry.arrivesAt - now) / 1000)}</span>
+        <span>${entry.kind === "intercept" ? `${(entry.loot || []).length}/${entry.capacity || routeRunCapacity(entry)} loot` : shipmentCargoShortLabel(entry)}</span>
         <div class="capacity-bar"><span style="width:${progress}%"></span></div>
       </div>`;
     }).join("")
-    : `<p class="muted">No active NPC traffic. Seed traffic to preview hidden route pressure.</p>`;
+    : `<p class="muted">No player route jobs are currently in motion.</p>`;
   return `<article class="admin-card admin-wide">
     <div class="blueprint-head">
       <div>
-        <h3>Admin Route Intel</h3>
-        <p class="muted">Hidden NPC route traffic. Players only see this kind of route pressure through scanner-style intel.</p>
+        <h3>Admin Route Activity</h3>
+        <p class="muted">Current player dispatches only. NPC encounters are random route events and are not represented as live traffic.</p>
       </div>
-      <span class="pill">${traffic.length} active</span>
+      <span class="pill">${activeJobs.length} active</span>
     </div>
     <div class="fab-metrics">${counts}</div>
-    <div class="button-row" style="margin-bottom:12px">
-      <button type="button" data-admin="seed-npc-traffic">Seed NPC Traffic</button>
-      <button type="button" data-admin="clear-npc-traffic">Clear NPC Traffic</button>
-    </div>
     <div class="admin-traffic-list">${rows}</div>
+  </article>`;
+}
+
+function renderAdminEncounterDesigner() {
+  const catalog = routeEncounterCatalog();
+  const summaryRows = catalog.map((entry) => `<div class="market-line">
+    <span>${entry.role === "routejack" ? "Routejack target" : "Merchant threat"}: ${entry.label}</span>
+    <strong>${Math.round(entry.ratePerHour * 100)}%/hr - ${entry.routeKinds.join("/")}</strong>
+  </div>`).join("");
+  const clearanceRows = allRoutePairs()
+    .map(({ from, route }) => {
+      const summary = routeClearanceSummary(from, route.to);
+      return summary ? `<div class="market-line"><span>${routeLabel(from, route.to)}</span><strong>${summary}</strong></div>` : "";
+    })
+    .filter(Boolean)
+    .join("") || `<p class="muted">No stabilized routes right now.</p>`;
+  return `<article class="admin-card admin-wide">
+    <div class="blueprint-head">
+      <div>
+        <h3>Encounter Designer</h3>
+        <p class="muted">Edit the route encounter catalog as JSON. Each entry controls role, route type, hourly rate, difficulty, waves, and stabilization rewards.</p>
+      </div>
+      <span class="pill">${catalog.length} encounters</span>
+    </div>
+    <div class="encounter-admin-layout">
+      <div>
+        <textarea id="adminEncounterJson" class="encounter-json" spellcheck="false">${escapeHtml(JSON.stringify(catalog, null, 2))}</textarea>
+        <div class="button-row">
+          <button type="button" data-admin="save-encounters">Save Encounters</button>
+          <button type="button" data-admin="reset-encounters">Reset Encounters</button>
+        </div>
+      </div>
+      <div class="encounter-admin-summary">
+        <h4>Catalog Summary</h4>
+        ${summaryRows}
+        <h4>Route Stabilization</h4>
+        ${clearanceRows}
+      </div>
+    </div>
   </article>`;
 }
 
@@ -1367,12 +1466,18 @@ function renderScannerIntelPanel(scannerActive) {
   }
   const scannedRoutes = routeOptions(state.district)
     .map((route) => {
-      const patrols = npcRouteTrafficOnRoute(state.district, route.to, "routejack").length;
-      const cargo = state.shipments.filter((shipment) => shipment.kind !== "intercept" && shipment.status === "in-transit" && sameRoute(shipment.from, shipment.to, state.district, route.to)).length
-        + npcRouteTrafficOnRoute(state.district, route.to, "merchant").length;
+      const playerJobs = state.shipments.filter((shipment) => shipment.status === "in-transit" && sameRoute(shipment.from, shipment.to, state.district, route.to)).length;
+      const sampleVehicle = itemByName(state.shipmentVehicle);
+      const sample = routePreviewShipment(route, sampleVehicle);
+      const encounter = sample
+        ? `${routeEncounterHourlyChance(sample, route)}%/hr ${state.role === "routejack" ? "targets" : "risk"}`
+        : "route dependent";
+      const clearance = routeClearanceSummary(state.district, route.to);
       return `<div class="dispatch-mini-card">
         <div class="card-row"><strong>${currentDistrict().name} to ${route.district.name}</strong><span class="pill">${routeDistance(route)}mi</span></div>
-        <span>NPC raiders ${patrols} - NPC cargo ${cargo}</span>
+        <span>${routeTargetRichness(route)} - ${encounter}</span>
+        ${clearance ? `<em>${clearance}</em>` : ""}
+        <em>${playerJobs} player job${playerJobs === 1 ? "" : "s"} currently out</em>
         <em>Scanner ${rarityMeta[state.routeScanQuality]?.label || "Active"}</em>
       </div>`;
     })
@@ -1520,7 +1625,7 @@ function renderShipments() {
       <div class="blueprint-head">
         <div>
           <h2>${isRoutejackView ? "Raids In Motion" : "Convoys In Motion"}</h2>
-          <p class="muted">${isRoutejackView ? "Routejack jobs travel in real time, then resolve against NPC merchant targets." : "Merchant convoys travel in real time and resolve on arrival."}</p>
+          <p class="muted">${isRoutejackView ? "Routejack jobs travel in real time and roll for NPC cargo targets while moving." : "Merchant convoys travel in real time and roll for NPC threats while moving."}</p>
         </div>
         <button type="button" data-view="inventory">Open Inventory</button>
       </div>
@@ -1532,7 +1637,7 @@ function renderShipments() {
       <div class="blueprint-head">
         <div>
           <h2>Route Battles</h2>
-          <p class="muted">Completed ${isRoutejackView ? "raid" : "convoy"} encounters keep their turn-by-turn battle replay here.</p>
+          <p class="muted">Live and completed ${isRoutejackView ? "raid" : "convoy"} encounters keep their turn-by-turn battle replay here.</p>
         </div>
         <span class="pill">${visibleBattles.length}</span>
       </div>
@@ -2554,6 +2659,7 @@ function renderAdmin() {
         </div>
       </article>
       ${renderAdminRouteTrafficPanel()}
+      ${renderAdminEncounterDesigner()}
       ${renderBattleSimulator()}
       <article class="admin-card">
         <h3>Prototype State</h3>
@@ -2940,6 +3046,21 @@ function handleAdmin(action) {
     state.output = [];
     state.lastCollected = [];
   }
+  if (action === "save-encounters") {
+    try {
+      const raw = document.querySelector("#adminEncounterJson")?.value || "[]";
+      const parsed = JSON.parse(raw);
+      const source = Array.isArray(parsed) ? parsed : parsed.encounters;
+      state.routeEncounterCatalog = normalizeRouteEncounterCatalog(source);
+      addFeed("Admin", `${state.routeEncounterCatalog.length} encounters saved`, "data");
+    } catch (error) {
+      addFeed("Admin", "encounter JSON invalid", "data");
+    }
+  }
+  if (action === "reset-encounters") {
+    state.routeEncounterCatalog = normalizeRouteEncounterCatalog(defaultRouteEncounterCatalog);
+    addFeed("Admin", "encounters reset", "data");
+  }
   if (action === "seed-npc-traffic") seedNpcRouteTraffic(state, 12);
   if (action === "clear-npc-traffic") {
     state.npcRouteTraffic = [];
@@ -2999,7 +3120,19 @@ document.body.addEventListener("click", (event) => {
   }
   if (button.dataset.cargoPick) {
     state.shipmentCargo = button.dataset.cargoPick;
-    state.shipmentCargoQty = 1;
+    if (!state.shipmentCargoLoad || typeof state.shipmentCargoLoad !== "object") state.shipmentCargoLoad = {};
+    if (!state.shipmentCargoLoad[state.shipmentCargo]) {
+      const vehicle = itemByName(state.shipmentVehicle);
+      const capacity = vehicle?.category === "vehicle" ? Math.max(1, Number(vehicle.capacity || 1)) : Infinity;
+      updateShipmentCargoLoad(state.shipmentCargo, 1, state.district, capacity);
+    }
+    render();
+    return;
+  }
+  if (button.dataset.cargoLoad) {
+    const vehicle = itemByName(state.shipmentVehicle);
+    const capacity = vehicle?.category === "vehicle" ? Math.max(1, Number(vehicle.capacity || 1)) : Infinity;
+    updateShipmentCargoLoad(button.dataset.cargoLoad, Number(button.dataset.cargoLoadDelta || 1), state.district, capacity);
     render();
     return;
   }
@@ -3007,9 +3140,7 @@ document.body.addEventListener("click", (event) => {
     const delta = Number(button.dataset.cargoQty);
     const vehicle = itemByName(state.shipmentVehicle);
     const capacity = vehicle?.category === "vehicle" ? Math.max(1, Number(vehicle.capacity || 1)) : 1;
-    const owned = inventoryFor(state.district)[state.shipmentCargo] || 0;
-    const maxQty = Math.max(1, Math.min(owned, capacity));
-    state.shipmentCargoQty = Math.max(1, Math.min(maxQty, Math.floor(Number(state.shipmentCargoQty || 1)) + delta));
+    updateShipmentCargoLoad(state.shipmentCargo, delta, state.district, capacity);
     render();
     return;
   }
@@ -3021,8 +3152,10 @@ document.body.addEventListener("click", (event) => {
   }
   if (button.dataset.shipVehicle) {
     state.shipmentVehicle = button.dataset.shipVehicle;
-    state.shipmentCargoQty = 1;
     state.shipmentEscort = "none";
+    const vehicle = itemByName(state.shipmentVehicle);
+    const capacity = vehicle?.category === "vehicle" ? Math.max(1, Number(vehicle.capacity || 1)) : Infinity;
+    shipmentCargoLoadEntries(state.district, capacity);
     render();
     return;
   }

@@ -186,21 +186,25 @@ Current vehicle balance stats:
 - Integrity: battle health, derived mostly from durability, cargo capacity, rarity, and role slot.
 - Impact: battle attack strength.
 - Profile: how easy the vehicle is to detect. Lower profile is safer for merchants.
-- Sensor: how good the vehicle is at detecting route traffic. Higher sensor is better for Routejacks and scanner-style route play.
+- Sensor: how good the vehicle is at finding or reading route encounters. Higher sensor is better for Routejacks and scanner-style route play.
 
 Normal shipment flow:
 
-1. Choose an item in the current city.
+1. Choose a connected destination city.
 2. Choose a vehicle in the same city.
 3. Load cargo into the vehicle's available cargo slots.
-4. Choose a connected destination city.
 5. The cargo manifest and vehicle travel in real time.
-6. On arrival, the manifest and vehicle appear in the destination city's inventory unless a designed NPC raider encounter detects and beats it.
-7. Successful Merchant deliveries pay freight credits based on distance, cargo units, cargo value, and how efficiently the vehicle was filled.
+6. While traveling, the route rolls for NPC encounters using an hourly chance. If no encounter happens before arrival, the manifest and vehicle appear in the destination city's inventory.
+7. If an NPC threat finds the convoy, the auto-battler resolves immediately and saves a replay. The player can watch it live or review it later.
+8. Successful Merchant deliveries pay freight credits based on distance, cargo units, cargo value, and how efficiently the vehicle was filled.
 
 Routes have distance in miles. Vehicles have speed in mph. Some routes are water-only and require aquatic vehicles.
 
 Each cargo item unit uses one cargo slot. A Common Freighter currently has 6 cargo slots, so it can carry six total units such as 6x Common Starter Component A or a mixed manifest of several different items. The destination must have enough free storage for every cargo unit plus the returning vehicle, otherwise the shipment waits as a blocked arrival.
+
+NPCs on routes are not live visible traffic. They are random route encounters, closer to a Pokemon-style encounter roll: the route, vehicle profile, cargo load, and escort choice shape the chance that something finds the convoy. The admin route panel only shows player jobs currently in motion.
+
+Route risk is shown as an encounter chance per hour. This is not a fixed route danger percentage; it is calculated from the encounter catalog, route kind, route length, cargo pressure, and any temporary route stabilization.
 
 ## Professions
 
@@ -222,13 +226,35 @@ Drifter and Fabricator do not dispatch route jobs. Bounty Hunter is removed from
 
 ## Route PvE Direction
 
-Route danger currently comes from hidden NPC route activity and designed NPC encounters, not a visible static danger percentage.
+Route danger currently comes from designed NPC encounters, not a visible static danger percentage.
 
-Routejacks send a lead vehicle plus up to two support vehicles onto a route. The convoy resolves in real time, then fights designed NPC merchant targets through the auto-battler until its hold is full, its encounter limit is reached, or a defender repels it.
+Routejacks send a lead vehicle plus up to two support vehicles onto a route. The convoy travels in real time and rolls for designed NPC merchant targets along the way. It keeps hunting until its hold is full, its encounter limit is reached, the travel window ends, or a defender repels it.
 
 A Routejack convoy can only keep stolen cargo that fits the total cargo capacity of the vehicles it sent. With the default Upgrade Loot policy, a full hold can replace lower-rarity loot with higher-rarity loot; otherwise it keeps the first cargo it steals.
 
 This creates the main PvE risk choice: send a cheap solo raider for low commitment and high failure risk, or commit a larger convoy that wins more often but ties up more vehicles and can still come home empty.
+
+Route stabilization is the first Death Stranding-inspired delivery layer. When a Merchant convoy survives and clears certain NPC threats, that route can become safer for everyone for a limited time. The current prototype models this as a global encounter-rate reduction with a timer. Later versions can expand this into deliberate route-clearing jobs, public route projects, route infrastructure, and cooperative pushes to make dangerous corridors profitable.
+
+## Encounter Catalog
+
+Admin mode has an Encounter Designer panel. It edits the route encounter catalog as JSON so encounters can be tuned without changing code.
+
+Important fields:
+
+- `role`: `merchant` encounters attack Merchant convoys. `routejack` encounters are NPC merchant targets for Routejacks.
+- `ratePerHour`: base hourly encounter rate before route stabilization and cargo pressure.
+- `weight`: relative chance of this encounter when multiple eligible encounters can trigger.
+- `routeKinds`: `land`, `water`, or both.
+- `minMiles` / `maxMiles`: distance range for eligible routes.
+- `difficulty`: rough combat difficulty from 0 to 4.
+- `rarityCeiling`: highest rarity vehicle the NPC can roll from.
+- `attackerClasses`: NPC raider classes used against Merchant convoys.
+- `vehicleClasses`: NPC target vehicle classes used against Routejacks.
+- `supportChance` / `escortChance`: chance to add support vehicles.
+- `cargoUnits`: how much cargo the encounter is carrying or threatening.
+- `clearHours` / `clearReduction`: optional route stabilization reward after clearing the threat.
+- `waves`: optional list of enemy or target layouts under the same encounter. Each wave can override label, weight, difficulty, rarity ceiling, vehicle classes, support or escort chance, and cargo units. The current combat engine resolves one wave per encounter trigger, but this gives us a clean path toward multi-wave route events later.
 
 ## Live Route Battles
 
@@ -237,25 +263,23 @@ Route battles now happen from Dispatch, not only in the Admin sandbox.
 Merchant shipment resolution:
 
 1. A Merchant sends cargo with a vehicle from one city to a connected city.
-2. When the shipment reaches its destination time, the route checks for hidden NPC raider pressure on that same route.
-3. If no NPC raider pressure is present, the cargo arrives safely and pays freight credits.
-4. If an NPC raider is present, it must detect the shipment first.
-5. Detection is affected by the raider vehicle's Sensor, the Merchant vehicle's Profile, cargo load, and relative speed.
-6. If detection fails, the shipment arrives safely.
-7. If detection succeeds, the route creates an NPC Raider vs Merchant auto-battle.
-8. If cargo escapes, survives, or the Routejack side is disabled, the shipment arrives.
-9. If the NPC raider disables the cargo vehicle, it steals only what fits in its hold. Any unstolen cargo returns with the Merchant vehicle.
-10. The battle is saved in Dispatch as a Route Battle. The player can open a turn-by-turn replay from the shipment, raid result, or Route Battles list.
+2. During travel, the route checks elapsed time and rolls against the current encounter chance per hour.
+3. If no encounter triggers before arrival, the cargo arrives safely and pays freight credits.
+4. If an NPC raider encounter triggers, the route creates an NPC Raider vs Merchant auto-battle.
+5. If cargo escapes, survives, or the Routejack side is disabled, the shipment continues toward its destination.
+6. If the NPC raider disables the cargo vehicle, it steals only what fits in its hold. Any unstolen cargo returns with the Merchant vehicle.
+7. The battle is saved in Dispatch as a Route Battle. The player can watch the live replay if they are present, or open the replay later from route history.
 
 Routejack raid resolution:
 
 1. A Routejack chooses a route, lead vehicle, up to two support vehicles, a tactic, and a loot hold policy from Dispatch.
 2. The convoy travels in real time.
-3. When the raid timer finishes, it rolls designed NPC merchant targets for that route.
-4. Each target creates a Routejack vs NPC Merchant auto-battle.
+3. During travel, the route rolls for designed NPC merchant targets using the current encounter chance per hour.
+4. Each triggered target creates a Routejack vs NPC Merchant auto-battle.
 5. If the Routejack convoy wins, it keeps as much cargo as its hold allows.
 6. If the defender repels the raid, the convoy stops and returns with any loot already taken.
-7. If the convoy returns empty, it pays a heat cost. Vehicles are not permanently destroyed in this prototype layer.
+7. If the hold fills, the encounter limit is reached, or the route timer ends, the convoy returns.
+8. If the convoy returns empty, it pays a heat cost. Vehicles are not permanently destroyed in this prototype layer.
 
 ## Route Auto-Battler Sandbox
 
