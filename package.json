@@ -1,0 +1,30 @@
+{
+  "name": "neon-fabs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "npm run test:syntax && npm run test:e2e",
+    "test:syntax": "node --check app.js && node --check game-systems.js && node --check game-content.js",
+    "test:e2e": "node scripts/run-playtest.js",
+    "test:e2e:raw": "playwright test",
+    "test:e2e:headed": "node scripts/run-playtest.js --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "serve": "node scripts/static-server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andres-sisneros/Neon-Fabs.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/andres-sisneros/Neon-Fabs/issues"
+  },
+  "homepage": "https://github.com/andres-sisneros/Neon-Fabs#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}
