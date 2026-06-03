@@ -1,5 +1,7 @@
 // Game content, tuning tables, and default prototype state. Loaded before app.js.
 const LEGACY_SAVE_PREFIX = "neon-fabs";
+const PLAYTEST_SAVE_KEY = "neon-fabs.playtest.v1";
+const PLAYTEST_SAVE_VERSION = 1;
 
 const BASE_BATTERY_CAPACITY = 86400;
 const MELD_BATTERY_BONUS = 3600;
@@ -188,12 +190,15 @@ const contractCatalog = [
 const defaultBattleSim = () => ({
   from: "lowline",
   to: "chrome-pier",
-  attackerVehicle: "Uncommon Interceptor",
+  encounterRole: "merchant",
+  encounterId: "static-skimmers",
+  encounterWaveId: "random",
+  attackerVehicle: "Common Interceptor",
   attackerSupport1: "Common Runner",
   attackerSupport2: "none",
   attackerUnits: [],
   replaceAttackers: false,
-  defenderVehicle: "Common Freighter",
+  defenderVehicle: "Common Runner",
   defenderEscort1: "Common Guardian",
   defenderEscort2: "none",
   defenderUnits: [],
@@ -203,10 +208,6 @@ const defaultBattleSim = () => ({
   attackerRole: "routejack",
   defenderRole: "merchant",
   lootPolicy: "upgrade",
-  attackerTactic: "snatch",
-  defenderTactic: "protect",
-  failureMode: "steal",
-  maxTicks: 120,
   runs: 250,
   attackBonus: 0,
   defenseBonus: 0,
@@ -218,7 +219,7 @@ function defaultBattleModules() {
     attackerVehicle: { standard1: "exhaust-hack", standard2: "seeker-array", overdrive: "breach-lance" },
     attackerSupport1: { standard1: "corrosion-payload", standard2: "none", overdrive: "lockdown-net" },
     attackerSupport2: { standard1: "none", standard2: "none", overdrive: "none" },
-    defenderVehicle: { standard1: "umbrella-shield", standard2: "patch-cloud", overdrive: "evasive-core" },
+    defenderVehicle: { standard1: "umbrella-shield", standard2: "patch-cloud", overdrive: "survival-core" },
     defenderEscort1: { standard1: "cargo-bulwark", standard2: "retaliation-coil", overdrive: "signal-bugle" },
     defenderEscort2: { standard1: "none", standard2: "none", overdrive: "none" },
   };
@@ -228,12 +229,14 @@ function defaultBattleBuilds() {
   const buildA = cloneBattleSettings(defaultBattleSim());
   const buildB = cloneBattleSettings({
     ...defaultBattleSim(),
-    attackerTactic: "disable",
-    defenderTactic: "evade",
+    attackerVehicle: "Common Interceptor",
+    attackerSupport1: "Common Runner",
+    defenderVehicle: "Common Freighter",
+    defenderEscort1: "Common Guardian",
     modules: {
       ...defaultBattleModules(),
       attackerVehicle: { standard1: "seeker-array", standard2: "exhaust-hack", overdrive: "breach-lance" },
-      defenderVehicle: { standard1: "umbrella-shield", standard2: "patch-cloud", overdrive: "evasive-core" },
+      defenderVehicle: { standard1: "umbrella-shield", standard2: "patch-cloud", overdrive: "survival-core" },
     },
   });
   return {
@@ -250,6 +253,16 @@ const battleUnitModuleSlots = [
   { key: "defenderEscort1", label: "Escort 1" },
   { key: "defenderEscort2", label: "Escort 2" },
 ];
+
+const encounterTierMeta = {
+  common: { label: "Common", rarity: "green", defaultRatePerMile: 0.02 },
+  uncommon: { label: "Uncommon", rarity: "blue", defaultRatePerMile: 0.01 },
+  rare: { label: "Rare", rarity: "gold", defaultRatePerMile: 0.005 },
+};
+
+function defaultEncounterRatesPerMile() {
+  return Object.fromEntries(Object.entries(encounterTierMeta).map(([tier, meta]) => [tier, meta.defaultRatePerMile]));
+}
 
 const routeModuleCatalog = [
   {
@@ -342,11 +355,10 @@ const routeModuleCatalog = [
     blackBox: true,
   },
   {
-    id: "evasive-core",
-    label: "Escape Overdrive",
+    id: "survival-core",
+    label: "Survival Overdrive",
     type: "overdrive",
-    summary: "Gives cargo more escape progress and shield.",
-    escapeBonus: 28,
+    summary: "Gives cargo an emergency shield. Future route-avoidance hooks stay outside the current HP-only battle layer.",
     shieldBonus: 12,
   },
   {
@@ -359,18 +371,6 @@ const routeModuleCatalog = [
   },
 ];
 
-const battleAttackerTactics = {
-  snatch: "Hit Cargo First",
-  disable: "Disable Escorts",
-  scramble: "Target Fastest",
-};
-
-const battleDefenderTactics = {
-  protect: "Protect Cargo",
-  counter: "Counter Lead",
-  evade: "Prioritize Escape",
-};
-
 const defaultNpcCombatUnitCatalog = [
   {
     id: "static-skimmer",
@@ -379,6 +379,8 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "green",
     iconName: "data",
     maxHp: 42,
+    attackMin: 7,
+    attackMax: 11,
     speed: 24,
     impact: 9,
     summary: "Cheap sensor-noise raider. Fast enough to matter, fragile enough for early convoys.",
@@ -390,6 +392,8 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "blue",
     iconName: "tool",
     maxHp: 72,
+    attackMin: 12,
+    attackMax: 18,
     speed: 20,
     impact: 15,
     summary: "Road crew enforcer tuned for steady pressure against cargo frames.",
@@ -401,6 +405,8 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "purple",
     iconName: "chip",
     maxHp: 96,
+    attackMin: 18,
+    attackMax: 24,
     speed: 26,
     impact: 21,
     summary: "Elite route predator. It hits cargo hard and makes rare encounters feel dangerous.",
@@ -412,11 +418,12 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "purple",
     iconName: "cell",
     maxHp: 160,
+    attackMin: 24,
+    attackMax: 32,
     speed: 8,
     impact: 28,
-    escapeDrag: 14,
-    targetMode: "cargo",
-    summary: "Slow route anomaly. It does not care about theft; it drags convoys down and tries to destroy the frame.",
+    futureHooks: ["hard to survive", "vehicle damage", "non-theft hazard"],
+    summary: "Slow route anomaly concept. Currently just a heavy, slow combat unit; route-horror mechanics are future candidates.",
   },
   {
     id: "market-mule-cargo",
@@ -425,6 +432,8 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "green",
     iconName: "poly",
     maxHp: 62,
+    attackMin: 2,
+    attackMax: 6,
     speed: 18,
     impact: 4,
     summary: "Light NPC cargo target for early Routejack raids.",
@@ -436,6 +445,8 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "gold",
     iconName: "chip",
     maxHp: 120,
+    attackMin: 5,
+    attackMax: 9,
     speed: 12,
     impact: 7,
     summary: "Slower, richer NPC cargo target that needs a real raid convoy to crack.",
@@ -447,6 +458,8 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "orange",
     iconName: "cell",
     maxHp: 168,
+    attackMin: 8,
+    attackMax: 12,
     speed: 13,
     impact: 10,
     summary: "High-value civic transfer target with enough integrity to punish weak Routejack builds.",
@@ -458,6 +471,8 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "blue",
     iconName: "lens",
     maxHp: 76,
+    attackMin: 9,
+    attackMax: 15,
     speed: 18,
     impact: 12,
     braveChance: 34,
@@ -470,6 +485,8 @@ const defaultNpcCombatUnitCatalog = [
     rarity: "purple",
     iconName: "tool",
     maxHp: 112,
+    attackMin: 15,
+    attackMax: 21,
     speed: 16,
     impact: 18,
     braveChance: 48,
@@ -483,7 +500,8 @@ const defaultRouteEncounterCatalog = [
     role: "merchant",
     label: "Static Skimmers",
     weight: 70,
-    ratePerHour: 0.16,
+    encounterTier: "common",
+    rateMultiplier: 1,
     routeKinds: ["land", "water"],
     minMiles: 0,
     maxMiles: 150,
@@ -514,9 +532,10 @@ const defaultRouteEncounterCatalog = [
     role: "merchant",
     label: "Toll Hounds",
     weight: 35,
-    ratePerHour: 0.09,
+    encounterTier: "uncommon",
+    rateMultiplier: 1,
     routeKinds: ["land"],
-    minMiles: 60,
+    minMiles: 90,
     maxMiles: 220,
     difficulty: 1,
     rarityCeiling: "blue",
@@ -544,7 +563,8 @@ const defaultRouteEncounterCatalog = [
     role: "merchant",
     label: "Black Ledger Crew",
     weight: 10,
-    ratePerHour: 0.035,
+    encounterTier: "rare",
+    rateMultiplier: 1,
     routeKinds: ["land", "water"],
     minMiles: 120,
     maxMiles: 999,
@@ -566,35 +586,12 @@ const defaultRouteEncounterCatalog = [
     summary: "Rare, dangerous routejacks. Clearing one should feel like news.",
   },
   {
-    id: "tar-wraith",
-    role: "merchant",
-    label: "Tar Wraith",
-    weight: 6,
-    ratePerHour: 0.025,
-    routeKinds: ["land", "water"],
-    minMiles: 90,
-    maxMiles: 999,
-    difficulty: 3,
-    rarityCeiling: "purple",
-    failureMode: "destroy",
-    cargoUnits: 1,
-    waves: [
-      {
-        id: "tar-wraith-contact",
-        label: "Tar Wraith Contact",
-        attackerUnits: ["tar-wraith"],
-      },
-    ],
-    clearHours: 5,
-    clearReduction: 0.5,
-    summary: "A slow route anomaly inspired by delivery-horror pressure: low frequency, high dread, no interest in stolen cargo.",
-  },
-  {
     id: "market-mule",
     role: "routejack",
     label: "Market Mule",
     weight: 68,
-    ratePerHour: 0.24,
+    encounterTier: "common",
+    rateMultiplier: 1,
     routeKinds: ["land", "water"],
     minMiles: 0,
     maxMiles: 170,
@@ -617,7 +614,8 @@ const defaultRouteEncounterCatalog = [
     role: "routejack",
     label: "Armored Haul",
     weight: 28,
-    ratePerHour: 0.12,
+    encounterTier: "uncommon",
+    rateMultiplier: 1,
     routeKinds: ["land"],
     minMiles: 70,
     maxMiles: 240,
@@ -640,7 +638,8 @@ const defaultRouteEncounterCatalog = [
     role: "routejack",
     label: "Arcology Transfer",
     weight: 8,
-    ratePerHour: 0.045,
+    encounterTier: "rare",
+    rateMultiplier: 1,
     routeKinds: ["land", "water"],
     minMiles: 140,
     maxMiles: 999,
@@ -1379,14 +1378,13 @@ const defaultState = () => ({
   shipmentCargoLoadTouched: false,
   dispatchCargoSearch: "",
   shipmentVehicle: "Common Runner",
-  shipmentEscort: "none",
+  shipmentEscort: "Common Guardian",
   shipmentDestination: "lowline",
   pvpRoute: "lowline",
   pvpVehicle: "Common Runner",
   pvpSupport1: "none",
   pvpSupport2: "none",
   pvpLootPolicy: "upgrade",
-  routejackTactic: "snatch",
   battleSim: defaultBattleSim(),
   battleSimResult: null,
   battleReplay: null,
@@ -1398,6 +1396,7 @@ const defaultState = () => ({
   nextNpcTrafficAt: Date.now(),
   npcCombatUnitCatalog: null,
   routeEncounterCatalog: null,
+  encounterRatesPerMile: defaultEncounterRatesPerMile(),
   routeClearances: {},
   batteryExtensions: 0,
   filamentBoost: null,
@@ -1437,3 +1436,40 @@ const defaultState = () => ({
   nextMarketId: 1,
   feed: [],
 });
+
+function applyCreativeContent(overrides = {}) {
+  const itemOverrides = overrides.items || {};
+  const itemPools = [starterItems, foodItems, vehicleItems, aquaticVehicleItems, boostItems, nethackItems, equipmentItems];
+  itemPools.forEach((pool) => {
+    pool.forEach((item) => {
+      const next = itemOverrides[item.name];
+      if (!next) return;
+      if (next.label) item.displayName = String(next.label);
+      if (next.description) item.description = String(next.description);
+      if (next.flavor) item.flavor = String(next.flavor);
+      if (next.art) item.art = String(next.art);
+    });
+  });
+
+  const meldOverrides = overrides.melds || {};
+  melds.forEach((meld) => {
+    const next = meldOverrides[meld.name];
+    if (!next) return;
+    if (next.label) meld.displayName = String(next.label);
+    if (next.bonus) meld.bonus = String(next.bonus);
+    if (next.flavor) meld.flavor = String(next.flavor);
+    if (next.art) meld.art = String(next.art);
+  });
+
+  const cityOverrides = overrides.cities || {};
+  districts.forEach((district) => {
+    const next = cityOverrides[district.id];
+    if (!next) return;
+    if (next.label) district.name = String(next.label);
+    if (next.description) district.description = String(next.description);
+    if (next.flavor) district.flavor = String(next.flavor);
+    if (next.art) district.art = String(next.art);
+  });
+
+  if (overrides.project?.title && typeof document !== "undefined") document.title = String(overrides.project.title);
+}

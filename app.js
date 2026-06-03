@@ -8,6 +8,8 @@ const walletSummary = document.querySelector("#walletSummary");
 const quickStats = document.querySelector("#quickStats");
 const screenTitle = document.querySelector("#screenTitle");
 const backButton = document.querySelector("#backButton");
+const brandTitle = document.querySelector(".brand div strong");
+const brandSubtitle = document.querySelector(".brand div span");
 let searchRenderTimer = null;
 
 function escapeHtml(value = "") {
@@ -28,7 +30,7 @@ function viewTitle() {
     findings: "Fabs",
     home: "Profile",
     inventory: "Inventory",
-    item: state.selectedItem,
+    item: itemLabel(state.selectedItem),
     "fab-shop": "Fab Shop",
     melds: "Melds",
     mines: "Fabs",
@@ -42,6 +44,9 @@ function viewTitle() {
 }
 
 function renderHeader() {
+  const project = window.NEON_CONTENT_OVERRIDES?.project || {};
+  if (brandTitle) brandTitle.textContent = project.title || "Neon Fabs";
+  if (brandSubtitle) brandSubtitle.textContent = project.subtitle || "Lowline testnet";
   if (walletSummary) walletSummary.textContent = `${formatCredits(state.credits)} | ${state.chips} chip${state.chips === 1 ? "" : "s"}`;
   playerSummary.textContent = `${state.player} (${level()}) | Home: ${homeDistrict().name} | Power: ${formatPower(state.power)}`;
   screenTitle.textContent = viewTitle();
@@ -649,7 +654,7 @@ function renderParts() {
   const keptPreview = pressure.kept.slice(0, 6).map((entry) => {
     const item = itemByName(outputName(entry));
     const fab = outputFabId(entry) ? fabById(outputFabId(entry)) : null;
-    return `<div class="market-line"><span class="item-name">${icon(item.iconName, item.rarity)} ${item.name}</span><strong>${fab ? fabDefinition(fab.type).label : "Print Bay"}</strong></div>`;
+    return `<div class="market-line"><span class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</span><strong>${fab ? fabDefinition(fab.type).label : "Print Bay"}</strong></div>`;
   }).join("");
   mainPanel.innerHTML = `
     <div class="grid">
@@ -677,7 +682,7 @@ function renderParts() {
             return `<article class="item-card backpack-item">
               <button type="button" data-open-inventory-actions="${name}" aria-label="Manage ${name}">
                 <span class="backpack-icon">${icon(item.iconName, item.rarity)}</span>
-                <strong class="item-name">${name}</strong>
+                <strong class="item-name">${itemLabel(item)}</strong>
                 <span class="backpack-meta">${rarityMeta[item.rarity].label} x${count}</span>
                 ${protectedItem}
               </button>
@@ -801,7 +806,8 @@ function routeEncounterRouteDetail(route, selectedVehicle = null) {
   const sample = routePreviewShipment(route, selectedVehicle);
   if (sample) {
     const label = state.role === "routejack" ? "targets" : "risk";
-    parts.push(`${routeEncounterHourlyChance(sample, route)}%/hr ${label}`);
+    const summary = routeEncounterFullRouteSummary(sample, route);
+    parts.push(`${summary.expected.toFixed(1)} exp, ${formatOdds(summary.chance * 100)} ${label}`);
   }
   const clearance = routeClearanceSummary(state.district, route.to);
   if (clearance) parts.push(clearance);
@@ -930,8 +936,6 @@ function renderCargoDispatchForm() {
       cargoUnits: Math.max(1, cargoQty || 1),
       attackerRole: "routejack",
       defenderRole: "merchant",
-      attackerTactic: "snatch",
-      defenderTactic: selectedEscort ? "protect" : "evade",
     })
     : null;
   const defenders = battleSettings ? makeBattleTeams(battleSettings, selectedRoute).defenders : [];
@@ -949,7 +953,7 @@ function renderCargoDispatchForm() {
     escortVehicle: selectedEscort?.name || null,
     profession: "merchant",
   } : null;
-  const encounterPreview = previewShipment ? routeEncounterHourlyChance(previewShipment, selectedRoute) : null;
+  const encounterPreview = previewShipment ? routeEncounterFullRouteSummary(previewShipment, selectedRoute) : null;
   const canShipSelected = canShipByRole && selectedCargo && cargoQty > 0 && routeVehicles.length && destinationOptions && selectedVehicle?.category === "vehicle" && vehicleCanUseRoute(selectedVehicle, selectedRoute);
   return `<div class="shipment-form cargo-dispatch-form dispatch-builder">
     <section class="dispatch-builder-section">
@@ -986,7 +990,7 @@ function renderCargoDispatchForm() {
       <div class="side-metric"><span>Travel</span><strong>${selectedTravelHours ? formatRouteTime(selectedTravelHours) : "No route"}</strong></div>
       <div class="side-metric"><span>Freight Pay</span><strong>${freightEstimate ? formatCredits(freightEstimate) : "No cargo"}</strong></div>
       <div class="side-metric"><span>Profile</span><strong>${selectedVehicle?.category === "vehicle" ? `${profileBand(vehicleProfileScore(selectedVehicle))} (${vehicleProfileScore(selectedVehicle)})` : "No vehicle"}</strong></div>
-      <div class="side-metric"><span>Encounter</span><strong>${encounterPreview !== null ? `${encounterPreview}%/hr` : "Unknown"}</strong></div>
+      <div class="side-metric"><span>Encounter</span><strong>${encounterPreview ? `${encounterPreview.expected.toFixed(1)} exp, ${formatOdds(encounterPreview.chance * 100)}` : "Unknown"}</strong></div>
     </div>
     <div class="battle-convoy-preview compact">
       <div class="card-row"><strong>Convoy Readiness</strong><span class="pill">${selectedRoute ? `${routeDistance(selectedRoute)}mi ${routeKind(selectedRoute)}` : "No route"}</span></div>
@@ -1102,9 +1106,58 @@ function renderAdminRouteTrafficPanel() {
 function renderAdminEncounterDesigner() {
   const catalog = routeEncounterCatalog();
   const unitCatalog = npcCombatUnitCatalog();
+  const selectedId = catalog.some((entry) => entry.id === state.adminCreatorEncounterId) ? state.adminCreatorEncounterId : catalog[0]?.id;
+  state.adminCreatorEncounterId = selectedId;
+  const selected = catalog.find((entry) => entry.id === selectedId) || catalog[0];
+  const encounterOptions = catalog.map((entry) => `<option value="${entry.id}" ${entry.id === selectedId ? "selected" : ""}>${entry.label}</option>`).join("");
+  const unitOptions = unitCatalog.map((unit) => `<option value="${unit.id}">${unit.label} (${unit.role})</option>`).join("");
+  const unitForRef = (ref) => {
+    if (typeof ref === "string") return npcCombatUnitById(ref);
+    if (ref?.id) return { ...npcCombatUnitById(ref.id), ...ref };
+    return null;
+  };
+  const renderEnemyRows = (wave, waveIndex) => {
+    const field = selected.role === "routejack" ? "defenderUnits" : "attackerUnits";
+    const refs = normalizeNpcUnitRefs(wave[field]);
+    const rows = refs.map((ref, unitIndex) => {
+      const unit = unitForRef(ref);
+      if (!unit) return "";
+      return `<div class="creator-enemy-row">
+        <input value="${escapeHtml(unit.label)}" readonly aria-label="Enemy name">
+        <label>HP <input type="number" value="${unit.maxHp}" readonly></label>
+        <label>ATK <input type="text" value="${unit.attackMin ?? unit.impact}-${unit.attackMax ?? unit.impact}" readonly></label>
+        <label>Speed <input type="number" value="${unit.speed}" readonly></label>
+        <label>Role <input value="${unit.role}" readonly></label>
+        <button type="button" data-admin="creator-remove-unit-${waveIndex}-${unitIndex}">Remove</button>
+      </div>`;
+    }).join("") || `<p class="muted">No authored enemies in this wave yet. It will use the older vehicle fallback until you add one.</p>`;
+    return `${rows}
+      <div class="creator-add-row">
+        <select id="creatorAddUnit-${waveIndex}">${unitOptions}</select>
+        <button type="button" data-admin="creator-add-unit-${waveIndex}">+ Enemy</button>
+      </div>`;
+  };
+  const waveRows = (selected?.waves || []).map((wave, waveIndex) => `<section class="creator-wave-card">
+    <div class="card-row">
+      <h4>Wave ${waveIndex + 1}</h4>
+      <button type="button" data-admin="creator-remove-wave-${waveIndex}" ${(selected.waves || []).length <= 1 ? "disabled" : ""}>Remove Wave</button>
+    </div>
+    <label>Wave Name <input id="creatorWaveLabel-${waveIndex}" value="${escapeHtml(wave.label || `Wave ${waveIndex + 1}`)}"></label>
+    <div class="creator-enemy-list">${renderEnemyRows(wave, waveIndex)}</div>
+  </section>`).join("");
+  const unitEditorRows = unitCatalog.map((unit) => `<div class="creator-unit-edit" data-npc-unit-id="${unit.id}">
+    <input data-unit-field="label" value="${escapeHtml(unit.label)}" aria-label="Unit name">
+    <select data-unit-field="role">
+      ${["raider", "support", "cargo", "escort"].map((role) => `<option value="${role}" ${unit.role === role ? "selected" : ""}>${role}</option>`).join("")}
+    </select>
+    <label>HP <input data-unit-field="maxHp" type="number" min="1" value="${unit.maxHp}"></label>
+    <label>ATK min <input data-unit-field="attackMin" type="number" min="0" value="${unit.attackMin ?? unit.impact}"></label>
+    <label>ATK max <input data-unit-field="attackMax" type="number" min="0" value="${unit.attackMax ?? unit.impact}"></label>
+    <label>Speed <input data-unit-field="speed" type="number" min="1" value="${unit.speed}"></label>
+  </div>`).join("");
   const summaryRows = catalog.map((entry) => `<div class="market-line">
     <span>${entry.role === "routejack" ? "Routejack target" : "Merchant threat"}: ${entry.label}</span>
-    <strong>${Math.round(entry.ratePerHour * 100)}%/hr - ${entry.routeKinds.join("/")} - ${(entry.waves || []).length} wave${(entry.waves || []).length === 1 ? "" : "s"}</strong>
+    <strong>${encounterTierMeta[entry.encounterTier]?.label || "Common"} ${formatOdds(encounterRatePerMile(entry) * 100)}/mi - global ${entry.role} table - ${(entry.waves || []).length} wave${(entry.waves || []).length === 1 ? "" : "s"}</strong>
   </div>`).join("");
   const unitRows = unitCatalog.map((unit) => `<div class="market-line">
     <span>${unit.label}</span>
@@ -1121,12 +1174,51 @@ function renderAdminEncounterDesigner() {
     <div class="blueprint-head">
       <div>
         <h3>Encounter Designer</h3>
-        <p class="muted">Edit the route encounter catalog as JSON. Each entry controls role, route type, hourly rate, difficulty, waves, and stabilization rewards.</p>
+        <p class="muted">Build route encounters from simple waves and NPC stat blocks. Raw JSON is still available for advanced edits.</p>
       </div>
       <span class="pill">${catalog.length} encounters</span>
     </div>
-    <div class="encounter-admin-layout">
-      <div>
+    <section class="creator-panel">
+      <div class="creator-encounter-info">
+        <h4>Encounter Info</h4>
+        <label>Encounter <select id="adminCreatorEncounter">${encounterOptions}</select></label>
+        <label>Name <input id="creatorEncounterLabel" value="${escapeHtml(selected?.label || "")}"></label>
+        <label>Role
+          <select id="creatorEncounterRole">
+            <option value="merchant" ${selected?.role === "merchant" ? "selected" : ""}>Threatens Merchant convoys</option>
+            <option value="routejack" ${selected?.role === "routejack" ? "selected" : ""}>Target for Routejacks</option>
+          </select>
+        </label>
+        <label>Tier
+          <select id="creatorEncounterTier">
+            ${Object.entries(encounterTierMeta).map(([tier, meta]) => `<option value="${tier}" ${selected?.encounterTier === tier ? "selected" : ""}>${meta.label} (${formatOdds(encounterBaseRatePerMile(tier) * 100)}/mi base)</option>`).join("")}
+          </select>
+        </label>
+        <label>Rate Multiplier <input id="creatorEncounterRateMultiplier" type="number" min="0" max="20" step="0.1" value="${Number(selected?.rateMultiplier || 1)}"></label>
+        <label>Description <textarea id="creatorEncounterSummary" rows="3">${escapeHtml(selected?.summary || "")}</textarea></label>
+        <div class="button-row">
+          <button type="button" data-admin="creator-save-encounter">Save Encounter Info</button>
+          <button type="button" data-admin="creator-add-wave">+ Add Wave</button>
+        </div>
+      </div>
+      <div class="creator-waves">
+        <h4>Waves</h4>
+        ${waveRows}
+      </div>
+      <div class="creator-units">
+        <h4>Enemy Library</h4>
+        ${unitEditorRows}
+        <div class="button-row">
+          <button type="button" data-admin="creator-save-units">Save Enemy Stats</button>
+          <button type="button" data-admin="creator-add-unit-template">+ Add Enemy</button>
+        </div>
+        <p class="muted">Current combat reads HP, Attack, and Speed. Crits, custom items, triggers, harder route hazards, and vehicle damage stay in the future bucket.</p>
+      </div>
+    </section>
+    <details class="creator-raw-json">
+      <summary>Raw JSON</summary>
+      <div class="encounter-admin-layout">
+        <div>
         <h4>Encounters & Waves</h4>
         <textarea id="adminEncounterJson" class="encounter-json" spellcheck="false">${escapeHtml(JSON.stringify(catalog, null, 2))}</textarea>
         <div class="button-row">
@@ -1150,9 +1242,10 @@ function renderAdminEncounterDesigner() {
         <h4>Route Stabilization</h4>
         ${clearanceRows}
         <h4>Creator Notes</h4>
-        <p class="muted">Use <code>attackerUnits</code> for threats against Merchant convoys and <code>defenderUnits</code> for Routejack targets. A wave can set <code>failureMode: "destroy"</code> for hazards that disable vehicles instead of stealing cargo.</p>
+        <p class="muted">Use <code>attackerUnits</code> for threats against Merchant convoys and <code>defenderUnits</code> for Routejack targets. For now custom units use only HP, Attack, and Speed. Hazard ideas like stronger route pressure, vehicle damage, crits, and trigger scripts are parked as future features.</p>
       </div>
-    </div>
+      </div>
+    </details>
   </article>`;
 }
 
@@ -1279,32 +1372,54 @@ function renderFabDetail() {
     </section>`;
 }
 
+function meldComponentGlyph(itemName) {
+  return itemName.match(/Component\s+([A-Z])$/)?.[1] || itemName.slice(0, 1).toUpperCase();
+}
+
 function renderMeldIngredientRow(part) {
   const item = itemByName(part.name);
-  const missing = Math.max(0, part.count - part.owned);
-  const homeAsk = lowestListing(state.homeCity, part.name);
-  const bestAsk = bestAskEverywhere(part.name);
-  const ownedPositions = itemCityPositions(part.name);
-  const ownedText = ownedPositions.length
-    ? ownedPositions.map(({ district, count }) => `${district.name} x${count}`).join(", ")
-    : "none";
-  const moveSource = ownedPositions.find(({ district }) => district.id !== state.homeCity && routePath(district.id, state.homeCity).length > 1);
-  const movePath = moveSource ? routePath(moveSource.district.id, state.homeCity) : [];
-  const actionLabel = missing ? "Get" : "Manage";
-  const routeHint = moveSource ? `${moveSource.district.name}${movePath.length > 2 ? ` via ${districtById(movePath[1]).name}` : ""}` : "none";
-  return `<div class="meld-source-row ${part.owned >= part.count ? "ready" : ""}">
-    <div>
-      <span class="item-name">${icon(item.iconName, item.rarity)} ${part.name}</span>
-      <p class="muted">Need ${part.count}. Home has ${part.owned}. ${missing ? `Missing ${missing}.` : "Ready."}</p>
+  const ownedSlots = Math.max(0, Math.min(part.count, part.owned));
+  const missing = Math.max(0, part.count - ownedSlots);
+  const pips = Array.from({ length: part.count }, (_, index) => `<span class="${index < ownedSlots ? "filled" : "empty"}"></span>`).join("");
+  const stateLabel = missing ? "missing" : "ready";
+  return `<button type="button" class="meld-token ${stateLabel}" data-open-meld-actions="${part.name}" aria-label="${missing ? "Missing" : "Ready"} ${itemLabel(item)}" title="${itemLabel(item)}">
+    <span class="meld-token-mark">${icon(item.iconName, item.rarity)} <strong>${meldComponentGlyph(part.name)}</strong></span>
+    <span class="meld-pips">${pips}</span>
+    <em>${stateLabel}</em>
+  </button>`;
+}
+
+function renderMeldCard(meld) {
+  const done = state.completed.includes(meld.name);
+  const ready = canMeld(meld);
+  const parts = recipeProgress(meld);
+  const slotsRequired = parts.reduce((sum, part) => sum + part.count, 0);
+  const slotsReady = parts.reduce((sum, part) => sum + Math.min(part.count, Math.max(0, part.owned)), 0);
+  const missingParts = parts.filter((part) => part.owned < part.count).length;
+  const stateLabel = done ? "complete" : ready ? "ready" : `${missingParts} missing`;
+  const cardState = done ? "complete" : ready ? "ready" : "incomplete";
+  const progress = slotsRequired ? (slotsReady / slotsRequired) * 100 : 0;
+  const tokens = parts.map((part) => renderMeldIngredientRow(part)).join("");
+  return `<article class="meld-card rarity-border-${meld.rarity} ${cardState}">
+    <div class="meld-card-head">
+      <div class="meld-sigil rarity-bg-${meld.rarity}">${icon("data", meld.rarity)}</div>
+      <div>
+        <h3>${meldLabel(meld)}</h3>
+        <span>${rarityMeta[meld.rarity].label}</span>
+      </div>
+      <strong>${stateLabel}</strong>
     </div>
-    <div class="meld-source-metrics">
-      <span>Home Ask <strong>${homeAsk ? formatCredits(homeAsk.price) : "none"}</strong></span>
-      <span>Best Ask <strong>${bestAsk ? `${formatCredits(bestAsk.listing.price)} @ ${bestAsk.district.name}` : "none"}</strong></span>
-      <span>Owned <strong>${ownedText}</strong></span>
-      <span>Move Path <strong>${routeHint}</strong></span>
+    <div class="meld-progress" aria-hidden="true"><span style="width:${done ? 100 : progress}%"></span></div>
+    <div class="recipe-list">${tokens}</div>
+    <div class="meld-card-foot">
+      <span>${meld.bonus.replace("Adds ", "+").replace(" battery capacity.", "")}</span>
+      ${done
+        ? `<span class="meld-seal">Fused</span>`
+        : ready
+          ? `<button type="button" data-meld="${meld.name}">Fuse</button>`
+          : ""}
     </div>
-    <button type="button" data-open-meld-actions="${part.name}">${actionLabel}</button>
-  </div>`;
+  </article>`;
 }
 
 function renderMelds() {
@@ -1315,6 +1430,7 @@ function renderMelds() {
   ];
   const visibleMelds = melds.filter((meld) => (meld.type || "starter") === state.selectedMeldType);
   const readyMelds = visibleMelds.filter((meld) => !state.completed.includes(meld.name) && canMeld(meld));
+  const fusedCount = visibleMelds.filter((meld) => state.completed.includes(meld.name)).length;
   const categoryButtons = `<div class="segmented">
     ${meldTypes.map((type) => `<button type="button" class="${state.selectedMeldType === type.id ? "active" : ""}" data-meld-type="${type.id}">${type.label}</button>`).join("")}
   </div>`;
@@ -1331,54 +1447,27 @@ function renderMelds() {
     ? ""
     : `<section class="panel">
         <h2>Melds Live In ${homeDistrict().name}</h2>
-        <p class="muted">You are viewing ${currentDistrict().name}. Switch to your home city to inspect recipes and fuse melds.</p>
+        <p class="muted">You are viewing ${currentDistrict().name}. Melds can only be fused at home.</p>
         <button type="button" data-view="cities">Open Map</button>
       </section>`;
-  const meldCards = visibleMelds
-    .map((meld) => {
-      const done = state.completed.includes(meld.name);
-      const ready = canMeld(meld);
-      const progress = recipeProgress(meld)
-        .map((part) => renderMeldIngredientRow(part))
-        .join("");
-      return `<article class="meld-card rarity-border-${meld.rarity} ${done ? "complete" : ""}">
-        <div class="blueprint-head">
-          <h3 class="item-name">${icon("data", meld.rarity)} ${meld.name}</h3>
-          ${rarityPill(meld.rarity)}
-        </div>
-        <div class="recipe-list">${progress}</div>
-        <p class="muted">${meld.bonus}</p>
-        <button type="button" data-meld="${meld.name}" ${done || !ready ? "disabled" : ""}>${done ? "Fused" : "Fuse Meld"}</button>
-      </article>`;
-    })
-    .join("");
+  const meldCards = visibleMelds.map((meld) => renderMeldCard(meld)).join("");
   mainPanel.innerHTML = `${animation}
     <section class="panel">
       <div class="blueprint-head">
         <div>
-          <h2>Meld Type</h2>
-          <p class="muted">Melds use relics stored in your home city: ${homeDistrict().name}.</p>
+          <h2>Meld Sets</h2>
         </div>
-        <span class="pill">${visibleMelds.filter((meld) => state.completed.includes(meld.name)).length}/${visibleMelds.length} fused here</span>
+        <span class="pill">${fusedCount}/${visibleMelds.length} fused</span>
       </div>
       ${categoryButtons}
+      <div class="meld-overview">
+        <span>${readyMelds.length} ready</span>
+        <span>${homeDistrict().name}</span>
+      </div>
     </section>
     ${
       isHomeView
         ? `<section class="panel" style="margin-top:14px">
-            ${
-              readyMelds.length
-                ? ""
-                : `<div class="empty-guidance">
-                    <h3>No Fuse-Ready Melds Yet</h3>
-                    <p class="muted">Meld recipes need their components in ${homeDistrict().name}. Collect from meld fabs, buy missing parts from the market, or move components home through Dispatch.</p>
-                    <div class="button-row">
-                      <button type="button" data-view="inventory">View Home Inventory</button>
-                      <button type="button" data-view="shop">Buy Components</button>
-                      <button type="button" data-view="fabs">Open Print Bay</button>
-                    </div>
-                  </div>`
-            }
             <div class="meld-grid">${meldCards}</div>
           </section>`
         : remoteNotice
@@ -1406,7 +1495,15 @@ function renderRoutejackDispatchForm() {
   const routejackPreviewRun = { vehicle: selectedVehicle?.name, support1: state.pvpSupport1, support2: state.pvpSupport2 };
   const patrolCapacity = selectedVehicle?.category === "vehicle" ? routeRunCapacity(routejackPreviewRun) : 0;
   const patrolHours = selectedRoute && selectedVehicle?.category === "vehicle" ? routeTravelHours(selectedRoute, selectedVehicle) : 0;
-  const encounterEstimate = selectedRoute ? Math.max(1, Math.min(4, Math.max(patrolCapacity, Math.round(patrolHours * 1.35)))) : 0;
+  const encounterEstimate = routejackPreviewRun && selectedRoute ? routeEncounterFullRouteSummary({
+    kind: "intercept",
+    from: state.district,
+    to: selectedRoute.to,
+    vehicle: selectedVehicle?.name,
+    support1: state.pvpSupport1,
+    support2: state.pvpSupport2,
+    capacity: patrolCapacity,
+  }, selectedRoute) : null;
   return `<div class="shipment-form dispatch-builder routejack-builder">
     <section class="dispatch-builder-section">
       <div class="card-row"><h3>Raid Route</h3><span class="pill">${currentDistrict().name}</span></div>
@@ -1431,22 +1528,8 @@ function renderRoutejackDispatchForm() {
       </div>
     </section>
     <section class="dispatch-builder-section">
-      <div class="card-row"><h3>Tactic</h3><span class="pill">${battleAttackerTactics[state.routejackTactic] || "Hit Cargo First"}</span></div>
-      <div class="dispatch-choice-grid tactic-choice-grid">
-        ${Object.entries(battleAttackerTactics).map(([id, label]) => dispatchChoiceCard({
-          active: state.routejackTactic === id,
-          attr: `data-routejack-tactic-choice="${id}"`,
-          title: label,
-          meta: id === "disable" ? "Safer vs escorts" : id === "scramble" ? "Press speed" : "Fastest steal",
-          detail: id === "snatch" ? "Focus cargo first" : id === "disable" ? "Clear protection before cargo" : "Target fast units",
-          iconName: id === "snatch" ? "chip" : id === "disable" ? "tool" : "data",
-          rarity: id === "disable" ? "gold" : id === "scramble" ? "blue" : "green",
-        })).join("")}
-      </div>
-    </section>
-    <section class="dispatch-builder-section">
       <div class="card-row"><h3>Loot Hold</h3><span class="pill">${patrolCapacity} slots</span></div>
-      <div class="dispatch-choice-grid tactic-choice-grid">
+      <div class="dispatch-choice-grid loot-choice-grid">
         ${dispatchChoiceCard({
           active: state.pvpLootPolicy === "upgrade",
           attr: `data-loot-policy-choice="upgrade"`,
@@ -1470,7 +1553,7 @@ function renderRoutejackDispatchForm() {
     <div class="dispatch-summary-strip">
       <div class="side-metric"><span>Raid Time</span><strong>${patrolHours ? formatRouteTime(patrolHours) : "No route"}</strong></div>
       <div class="side-metric"><span>Capacity</span><strong>${patrolCapacity || "Need vehicle"}</strong></div>
-      <div class="side-metric"><span>Targets</span><strong>${encounterEstimate || "Need route"}</strong></div>
+      <div class="side-metric"><span>Targets</span><strong>${encounterEstimate ? `${encounterEstimate.expected.toFixed(1)} exp` : "Need route"}</strong></div>
       <div class="side-metric"><span>Sensor</span><strong>${selectedVehicle?.category === "vehicle" ? vehicleSensorScore(selectedVehicle) : "No vehicle"}</strong></div>
     </div>
     <button type="button" data-action="attempt-intercept" ${routes.length && availableVehicles.length ? "" : "disabled"}>Launch Raid</button>
@@ -1488,7 +1571,10 @@ function renderScannerIntelPanel(scannerActive) {
       const sampleVehicle = itemByName(state.shipmentVehicle);
       const sample = routePreviewShipment(route, sampleVehicle);
       const encounter = sample
-        ? `${routeEncounterHourlyChance(sample, route)}%/hr ${state.role === "routejack" ? "targets" : "risk"}`
+        ? (() => {
+          const summary = routeEncounterFullRouteSummary(sample, route);
+          return `${summary.expected.toFixed(1)} exp, ${formatOdds(summary.chance * 100)} ${state.role === "routejack" ? "targets" : "risk"}`;
+        })()
         : "route dependent";
       const clearance = routeClearanceSummary(state.district, route.to);
       return `<div class="dispatch-mini-card">
@@ -1703,7 +1789,7 @@ function renderItemDetail() {
       .filter(({ fab }) => fab.city === state.district)
       .map(({ fab, index }) => {
         const current = fab.equipment?.[item.equipmentSlot];
-        return `<option value="${index}">${fabDefinition(fab.type).label}${current ? ` - replaces ${current}` : " - empty slot"}</option>`;
+        return `<option value="${index}">${fabDefinition(fab.type).label}${current ? ` - replaces ${itemLabel(current)}` : " - empty slot"}</option>`;
       })
       .join("")
     : "";
@@ -1711,7 +1797,7 @@ function renderItemDetail() {
     <section class="detail-card">
       <div class="detail-layout">
         <div>
-          <h2 class="item-name">${icon(item.iconName, item.rarity)} ${item.name}</h2>
+          <h2 class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</h2>
           <p class="muted">${item.fab} - ${rarityMeta[item.rarity].label}</p>
           <p>${item.description}</p>
           <p>${item.use}</p>
@@ -2135,7 +2221,7 @@ function renderWiki() {
           <h3>Core Loop</h3>
           <p>Your battery runs in real time. While it has charge, active fabs accumulate grams. Each full gram rolls the fab's selected print pattern, often producing no item and sometimes producing that pattern's item at a quality tier.</p>
           <p>The Print Bay holds sealed prints for the current city. Opening it moves prints into local inventory when there is room and recharges battery to max capacity.</p>
-          <p>This prototype currently uses session state only. Refreshing the browser or pressing New Test starts from a clean profile so design changes never need old-save compatibility.</p>
+          <p>This prototype uses a browser-local playtest save. Refreshing keeps this browser's profile; New Test starts clean when design changes need a fresh run.</p>
         </article>
         <article class="wiki-card">
           <h3>Print Patterns</h3>
@@ -2165,20 +2251,20 @@ function renderWiki() {
         </article>
         <article class="wiki-card">
           <h3>Route Auto-Battler</h3>
-          <p>The admin simulator is the balance sandbox for designed NPC route encounters. Dispatch route battles use the same core engine, while Admin keeps instant and batch tools for tuning. The current fundamental stats are Integrity, Speed, Impact, Initiative, Escape, Profile, and Sensor.</p>
-          <p>Each tick adds Speed to Initiative. At 100 Initiative, a vehicle acts. Cargo vehicles push Escape; other vehicles attack. Routejack jobs target NPC merchant cargo.</p>
-          <p>Attacker tactics decide what the attacking party focuses: Hit Cargo First, Disable Escorts, or Target Fastest. Defender tactics decide the response: Protect Cargo, Counter Lead, or Prioritize Escape.</p>
-          <p>Admin Build Comparison lets you save two route-party setups, then run them side by side to compare take rate, safe rate, average ticks, cargo integrity, and escape progress.</p>
+          <p>The admin simulator is the balance sandbox for designed NPC route encounters. Dispatch route battles use the same core engine, while Admin keeps instant and batch tools for tuning. The current fundamental stats are Integrity, Speed, Impact, Initiative, Profile, and Sensor.</p>
+          <p>Each tick adds Speed to Initiative. At 100 Initiative, a vehicle acts. Every active vehicle attacks; battles continue until one side reaches 0 HP.</p>
+          <p>Module-style effects such as cargo focus, escort disruption, or emergency shields are reserved for future items and modules.</p>
+          <p>Admin Build Comparison lets you save two route-party setups, then run them side by side to compare take rate, safe rate, average ticks, and cargo integrity.</p>
         </article>
         <article class="wiki-card">
           <h3>Battle Flow</h3>
           <p>Stats come from vehicle rarity, mph, durability, cargo capacity, route compatibility, role slot, and role modifiers. Each tick adds Speed to Initiative; ready vehicles act, spend 100 Initiative, and keep overflow.</p>
-          <p>The current action pipeline is intentionally small: choose target, apply Impact damage to Integrity, or if the actor is cargo, add Escape progress.</p>
+          <p>The current action pipeline is intentionally small: choose a target, apply Impact damage to Integrity, and check whether either side has no active vehicles.</p>
           <p>Shields, Brave, Corrosion, cooldown specials, modules, and overdrives are planned layers. We add them only after the core layer is readable and tunable.</p>
         </article>
         <article class="wiki-card">
           <h3>Battle Outcomes</h3>
-          <p>Attackers take cargo when cargo Integrity reaches 0. Defenders keep cargo by reaching 100 Escape, surviving the tick limit, or disabling every attacker.</p>
+          <p>Attackers take cargo when every defending vehicle is disabled. Defenders keep cargo by disabling every attacker.</p>
           <p>The live route direction still cares about cargo capacity: Routejacks can only keep stolen cargo that fits their vehicle hold. The simulator models cargo load by making loaded cargo vehicles slower and tougher.</p>
         </article>
         <article class="wiki-card">
@@ -2215,7 +2301,7 @@ function renderWiki() {
 
 function renderBattleSimResult(result) {
   if (!result) {
-    return `<p class="muted">Run one trial or a batch to see cargo take rate, escape rate, unit survival, and a tick-by-tick combat log.</p>`;
+    return `<p class="muted">Run one encounter or a batch to see cargo take rate, safe rate, unit survival, and a tick-by-tick combat log.</p>`;
   }
   const logEntries = result.sample?.log || [];
   const shownLogEntries = logEntries.length > 90
@@ -2253,11 +2339,11 @@ function renderBattleSimResult(result) {
     <div class="fab-metrics">
       <div class="side-metric"><span>Cargo Taken</span><strong>${formatOdds(result.stealRate * 100)}</strong></div>
       <div class="side-metric"><span>Cargo Safe</span><strong>${formatOdds(result.defendRate * 100)}</strong></div>
-      <div class="side-metric"><span>Escaped</span><strong>${formatOdds(result.escapeRate * 100)}</strong></div>
       <div class="side-metric"><span>Average Ticks</span><strong>${result.averageTicks.toFixed(1)}</strong></div>
       <div class="side-metric"><span>Average Cargo HP</span><strong>${result.averageCargoHp.toFixed(1)}</strong></div>
-      <div class="side-metric"><span>Escape Progress</span><strong>${result.averageCargoEscape.toFixed(1)}%</strong></div>
       <div class="side-metric"><span>Runs</span><strong>${result.runs}</strong></div>
+      <div class="side-metric"><span>Scenario</span><strong>${result.scenario || "Encounter"}</strong></div>
+      <div class="side-metric"><span>Encounter</span><strong>${result.encounter || "Designed Encounter"}</strong></div>
       <div class="side-metric"><span>Cargo</span><strong>${result.cargo}</strong></div>
     </div>
     <div class="grid two battle-result-grid">
@@ -2266,7 +2352,7 @@ function renderBattleSimResult(result) {
         ${outcomeRows || `<p class="muted">No outcomes recorded.</p>`}
       </article>
       <article class="tier-card">
-        <div class="card-row"><h3>Unit Survival</h3><span class="muted">${result.maxTicks} tick limit</span></div>
+        <div class="card-row"><h3>Unit Survival</h3><span class="muted">HP-only resolution</span></div>
         ${survivalRows || `<p class="muted">No unit survival data.</p>`}
       </article>
     </div>
@@ -2283,7 +2369,6 @@ function battleLogTypeLabel(type) {
     attack: "Attack",
     brave: "Brave",
     disabled: "Disabled",
-    escape: "Escape",
     fail: "Fail",
     gap: "More",
     outcome: "Outcome",
@@ -2409,10 +2494,11 @@ function renderBattleBuildCard(slot, build) {
     <div class="card-row"><h4>${build.name}</h4><span class="pill">${build.savedAt ? `saved ${build.savedAt}` : "default"}</span></div>
     <div class="wiki-list">
       <div class="market-line"><span>Route</span><strong>${summary.route}</strong></div>
+      <div class="market-line"><span>Scenario</span><strong>${summary.role}</strong></div>
+      <div class="market-line"><span>Encounter</span><strong>${summary.encounter}</strong></div>
       <div class="market-line"><span>Cargo</span><strong>${summary.cargo}</strong></div>
       <div class="market-line"><span>Attacker Party</span><strong>${summary.attackers}</strong></div>
       <div class="market-line"><span>Defender Party</span><strong>${summary.defenders}</strong></div>
-      <div class="market-line"><span>Tactics</span><strong>${summary.tactics}</strong></div>
     </div>
     <p class="muted">Core layer only: no modules or overdrives in this comparison pass.</p>
     <button type="button" data-admin="battle-save-${slot}">Save Current As ${build.name}</button>
@@ -2430,10 +2516,8 @@ function renderBattleComparisonResult(result) {
       <div class="fab-metrics">
         <div class="side-metric"><span>Cargo Taken</span><strong>${formatOdds(res.stealRate * 100)}</strong></div>
         <div class="side-metric"><span>Cargo Safe</span><strong>${formatOdds(res.defendRate * 100)}</strong></div>
-        <div class="side-metric"><span>Escaped</span><strong>${formatOdds(res.escapeRate * 100)}</strong></div>
         <div class="side-metric"><span>Average Ticks</span><strong>${res.averageTicks.toFixed(1)}</strong></div>
         <div class="side-metric"><span>Cargo HP</span><strong>${res.averageCargoHp.toFixed(1)}</strong></div>
-        <div class="side-metric"><span>Escape</span><strong>${res.averageCargoEscape.toFixed(1)}%</strong></div>
       </div>
     </article>`;
   }).join("");
@@ -2452,10 +2536,92 @@ function renderBattleComparisonResult(result) {
   </div>`;
 }
 
+function battleEncounterPreviewRun(battle, routeInfo, encounterRole) {
+  if (encounterRole === "routejack") {
+    return {
+      kind: "intercept",
+      from: routeInfo.from,
+      to: routeInfo.to,
+      vehicle: battle.attackerVehicle,
+      support1: battle.attackerSupport1,
+      support2: battle.attackerSupport2,
+      loot: [],
+      capacity: routeRunCapacity({
+        vehicle: battle.attackerVehicle,
+        support1: battle.attackerSupport1,
+        support2: battle.attackerSupport2,
+      }),
+    };
+  }
+  return {
+    from: routeInfo.from,
+    to: routeInfo.to,
+    vehicle: battle.defenderVehicle,
+    cargo: battle.cargo,
+    cargos: [{ name: battle.cargo, qty: battleCargoUnits(battle) }],
+    cargoUnits: battleCargoUnits(battle),
+    capacity: battleCargoCapacity(battle),
+    escortVehicle: battle.defenderEscort1 !== "none" ? battle.defenderEscort1 : null,
+    riskReduction: 0,
+  };
+}
+
+function renderEncounterRateCalculator(battle, routeInfo, encounterRole) {
+  const rates = normalizeEncounterRatesPerMile(state.encounterRatesPerMile);
+  const previewRun = battleEncounterPreviewRun(battle, routeInfo, encounterRole);
+  const summary = routeEncounterFullRouteSummary(previewRun, routeInfo.route);
+  const allTierExpected = summary.miles * summary.modifier * Object.values(rates).reduce((sum, value) => sum + value, 0);
+  const allTierChance = 1 - Math.exp(-allTierExpected);
+  const inputRows = Object.entries(encounterTierMeta).map(([tier, meta]) => `<label class="rate-row">
+    <span>${meta.label}</span>
+    <input id="encounter-rate-${tier}" type="number" value="${(rates[tier] * 100).toFixed(2)}" min="0" max="95" step="0.1">
+    <em>per mile</em>
+  </label>`).join("");
+  const tierRows = summary.tiers.map((tier) => `<div class="market-line">
+    <span>${tier.label}</span>
+    <strong>${tier.entries.length ? `${tier.expected.toFixed(2)} exp, ${formatOdds(tier.chance * 100)}` : "no designed encounter"}</strong>
+  </div>`).join("");
+  return `<section class="battle-party-card encounter-rate-card">
+    <div class="card-row"><h4>Encounter Rate Calculator</h4><span class="pill">per mile</span></div>
+    <div class="rate-grid compact-rates">${inputRows}</div>
+    <div class="button-row">
+      <button type="button" data-admin="set-encounter-rates">Set Rates</button>
+      <button type="button" data-admin="reset-encounter-rates">Reset Rates</button>
+    </div>
+    <div class="fab-metrics">
+      <div class="side-metric"><span>Selected Route</span><strong>${summary.miles}mi</strong></div>
+      <div class="side-metric"><span>Live Expected</span><strong>${summary.expected.toFixed(2)}</strong></div>
+      <div class="side-metric"><span>Live Chance</span><strong>${formatOdds(summary.chance * 100)}</strong></div>
+      <div class="side-metric"><span>Modifier</span><strong>x${summary.modifier.toFixed(2)}</strong></div>
+      <div class="side-metric"><span>Base Tier Total</span><strong>${allTierExpected.toFixed(2)} exp</strong></div>
+      <div class="side-metric"><span>Base Tier Chance</span><strong>${formatOdds(allTierChance * 100)}</strong></div>
+    </div>
+    <div class="wiki-list">${tierRows}</div>
+    <p class="muted">Live Dispatch rolls the role's global encounter table once per mile traveled. Longer routes mean more rolls; cargo, speed, escorts, boosts, and route stabilization modify the rate.</p>
+  </section>`;
+}
+
 function renderBattleSimulator() {
   const battle = normalizeBattleSettings(state.battleSim || defaultBattleSim());
   const battleBuilds = normalizeBattleBuilds(state.battleBuilds);
   const routeInfo = selectedBattleRoute();
+  const encounterRole = battleEncounterRole(battle);
+  const encounterChoices = battleEligibleEncounters(battle, routeInfo.route);
+  const selectedEncounter = battleEncounterFor(battle, routeInfo.route);
+  const selectedWave = battleEncounterWaveFor(battle, selectedEncounter, { pickRandom: false });
+  const encounterRoleOptions = [
+    ["merchant", "Merchant Shipment"],
+    ["routejack", "Routejack Raid"],
+  ].map(([id, label]) => `<option value="${id}" ${encounterRole === id ? "selected" : ""}>${label}</option>`).join("");
+  const encounterOptions = encounterChoices
+    .map((encounter) => {
+      return `<option value="${encounter.id}" ${selectedEncounter?.id === encounter.id ? "selected" : ""}>${encounter.label} - ${encounterTierMeta[encounter.encounterTier]?.label || "Common"} ${formatOdds(encounterRatePerMile(encounter) * 100)}/mi</option>`;
+    })
+    .join("");
+  const waveOptions = selectedEncounter
+    ? `<option value="random" ${battle.encounterWaveId === "random" ? "selected" : ""}>Weighted Random</option>${selectedEncounter.waves.map((wave) => `<option value="${wave.id}" ${battle.encounterWaveId === wave.id ? "selected" : ""}>${wave.label}</option>`).join("")}`
+    : `<option value="random">No waves</option>`;
+  const previewBattle = battleSettingsForEncounter(battle, routeInfo.route, { pickRandom: false });
   const cargoCapacity = battleCargoCapacity(battle);
   const cargoLoad = battleCargoUnits(battle);
   const routeChoices = allRoutePairs()
@@ -2480,16 +2646,14 @@ function renderBattleSimulator() {
   const defenderRoleChoices = (selected, attackerRole) => ["merchant"]
     .map((id) => `<option value="${id}" ${selected === id ? "selected" : ""}>${roles[id].label}</option>`)
     .join("");
-  const tacticOptions = (options, selected) => Object.entries(options)
-    .map(([id, label]) => `<option value="${id}" ${selected === id ? "selected" : ""}>${label}</option>`)
-    .join("");
-  const { attackers, defenders } = makeBattleTeams(battle, routeInfo.route);
+  const { attackers, defenders } = makeBattleTeams(previewBattle, routeInfo.route);
   const renderUnitCard = (unit) => {
-    const compatible = vehicleCanUseRoute(unit.vehicle, routeInfo.route);
+    const compatible = unit.vehicle ? vehicleCanUseRoute(unit.vehicle, routeInfo.route) : true;
+    const profile = unit.vehicle ? `<span>Profile ${profileBand(vehicleProfileScore(unit.vehicle))}</span><span>Sensor ${vehicleSensorScore(unit.vehicle)}</span>` : `<span>NPC stat block</span>`;
     return `<div class="battle-unit-card ${unit.side}">
       <div class="card-row"><strong class="item-name">${icon(unit.iconName, unit.rarity)} ${unit.name}</strong><span class="pill">${unit.role}</span></div>
-      <div class="battle-stat-row"><span>Integrity ${unit.hp}</span><span>Speed ${unit.speed}</span><span>Impact ${unit.impact}</span><span>Profile ${profileBand(vehicleProfileScore(unit.vehicle))}</span><span>Sensor ${vehicleSensorScore(unit.vehicle)}</span></div>
-      <p class="muted">${compatible ? "Route compatible" : "Route mismatch penalty active"}${unit.role === "cargo" ? ". Cargo turns build escape progress instead of attacking." : ""}</p>
+      <div class="battle-stat-row"><span>Integrity ${unit.hp}</span><span>Speed ${unit.speed}</span><span>Impact ${unit.impact}</span>${profile}</div>
+      <p class="muted">${compatible ? "Route compatible" : "Route mismatch penalty active"}${unit.npcUnit ? ". Defined by the selected encounter." : ""}${unit.role === "cargo" ? ". Cargo carries rewards but still fights in the HP-only layer." : ""}</p>
     </div>`;
   };
   const attackerUnitRows = attackers.map(renderUnitCard).join("");
@@ -2499,39 +2663,50 @@ function renderBattleSimulator() {
     <div class="blueprint-head">
       <div>
         <h3>Route Auto-Battle Simulator</h3>
-        <p class="muted">No-consequences route combat using the fundamental layer: detect, engage, gain initiative, attack integrity, or escape with cargo.</p>
+        <p class="muted">No-consequences route combat using the fundamental layer: detect, engage, gain initiative, and fight until one side reaches 0 HP.</p>
       </div>
       <span class="pill">core rules</span>
     </div>
     <div class="battle-sim-layout">
       <div class="battle-control-stack">
+        <section class="battle-party-card battle-encounter-card">
+          <div class="card-row"><h4>Encounter Setup</h4><span class="pill">${battleEncounterRoleLabel(encounterRole)}</span></div>
+          <label><span>Player Role</span><select id="battleEncounterRole" data-battle-setting="encounter-role">${encounterRoleOptions}</select></label>
+          <label><span>Route</span><select id="battleRoute" data-battle-setting="route">${routeChoices}</select></label>
+          <label><span>Encounter</span><select id="battleEncounterId" data-battle-setting="encounter">${encounterOptions}</select></label>
+          <label><span>Wave</span><select id="battleEncounterWave" data-battle-setting="encounter-wave">${waveOptions}</select></label>
+          <p class="muted">${selectedEncounter?.summary || "Pick an encounter to test against this role."}${selectedEncounter ? " This encounter can naturally roll on any route for this player role." : ""}${selectedWave ? ` Current preview: ${selectedWave.label}.` : ""}</p>
+        </section>
+        ${renderEncounterRateCalculator(battle, routeInfo, encounterRole)}
         <div class="battle-party-grid">
           <section class="battle-party-card battle-matchup-card">
-            <div class="card-row"><h4>Route Matchup</h4><span class="pill">${roles[battle.attackerRole].label} vs ${roles[battle.defenderRole].label}</span></div>
-            <label><span>Route</span><select id="battleRoute" data-battle-setting="route">${routeChoices}</select></label>
-            <label><span>${cargoItemLabel}</span><select id="battleCargo" data-battle-setting="cargo">${cargoChoices}</select></label>
-            <label><span>Cargo Slots Loaded</span><input id="battleCargoUnits" type="number" value="${cargoLoad}" min="1" max="${cargoCapacity}" step="1" data-battle-setting="cargo-units"></label>
-            <label><span>Tick Limit</span><input id="battleMaxTicks" type="number" value="${battle.maxTicks}" min="30" max="500" step="10" data-battle-setting="tick-limit"></label>
+            <div class="card-row"><h4>Run Settings</h4><span class="pill">${selectedEncounter?.label || "Encounter"}</span></div>
+            ${encounterRole === "merchant" ? `
+              <label><span>${cargoItemLabel}</span><select id="battleCargo" data-battle-setting="cargo">${cargoChoices}</select></label>
+              <label><span>Cargo Slots Loaded</span><input id="battleCargoUnits" type="number" value="${cargoLoad}" min="1" max="${cargoCapacity}" step="1" data-battle-setting="cargo-units"></label>
+            ` : `<p class="muted">Target cargo and cargo slots come from the selected encounter.</p>`}
             <label><span>Batch Runs</span><input id="battleRuns" type="number" value="${battle.runs}" min="1" max="5000" step="1" data-battle-setting="runs"></label>
-            <p class="muted">${battleRoleMatchupText(battle)} This sandbox now tunes PvE Routejack raid outcomes.</p>
+            <p class="muted">Batch runs use the selected encounter. Weighted Random samples that encounter's waves across the batch.</p>
           </section>
           <section class="battle-party-card attacker">
-            <div class="card-row"><h4>Attacker Party</h4><span class="pill">${roles[battle.attackerRole].label}</span></div>
-            <label><span>Attacker Role</span><select id="battleAttackerRole" data-battle-setting="attacker-role">${attackerRoleChoices(battle.attackerRole)}</select></label>
-            <label><span>Lead Vehicle</span><select id="battleAttackerVehicle" data-battle-setting="attacker">${vehicleOptions(battle.attackerVehicle)}</select></label>
-            <label><span>Support 1</span><select id="battleAttackerSupport1" data-battle-setting="attacker-support-1">${optionalVehicleOptions(battle.attackerSupport1)}</select></label>
-            <label><span>Support 2</span><select id="battleAttackerSupport2" data-battle-setting="attacker-support-2">${optionalVehicleOptions(battle.attackerSupport2)}</select></label>
-            <label><span>Tactic</span><select id="battleAttackerTactic" data-battle-setting="attacker-tactic">${tacticOptions(battleAttackerTactics, battle.attackerTactic)}</select></label>
-            <label><span>Attack Modifier</span><input id="battleAttackBonus" type="number" value="${battle.attackBonus}" min="-100" max="100" step="1" data-battle-setting="attack-modifier"></label>
+            <div class="card-row"><h4>${encounterRole === "routejack" ? "Player Routejack Convoy" : "NPC Encounter Raiders"}</h4><span class="pill">${roles[battle.attackerRole].label}</span></div>
+            ${encounterRole === "routejack" ? `
+              <label><span>Attacker Role</span><select id="battleAttackerRole" data-battle-setting="attacker-role">${attackerRoleChoices(battle.attackerRole)}</select></label>
+              <label><span>Lead Vehicle</span><select id="battleAttackerVehicle" data-battle-setting="attacker">${vehicleOptions(battle.attackerVehicle)}</select></label>
+              <label><span>Support 1</span><select id="battleAttackerSupport1" data-battle-setting="attacker-support-1">${optionalVehicleOptions(battle.attackerSupport1)}</select></label>
+              <label><span>Support 2</span><select id="battleAttackerSupport2" data-battle-setting="attacker-support-2">${optionalVehicleOptions(battle.attackerSupport2)}</select></label>
+              <label><span>Attack Modifier</span><input id="battleAttackBonus" type="number" value="${battle.attackBonus}" min="-100" max="100" step="1" data-battle-setting="attack-modifier"></label>
+            ` : `<p class="muted">This side is generated from the selected encounter and wave. Use the Encounter Designer above to edit these enemies.</p>`}
           </section>
           <section class="battle-party-card defender">
-            <div class="card-row"><h4>Defender Party</h4><span class="pill">${roles[battle.defenderRole].label}</span></div>
-            <label><span>Defender Role</span><select id="battleDefenderRole" data-battle-setting="defender-role">${defenderRoleChoices(battle.defenderRole, battle.attackerRole)}</select></label>
-            <label><span>${cargoVehicleLabel}</span><select id="battleDefenderVehicle" data-battle-setting="defender">${vehicleOptions(battle.defenderVehicle)}</select></label>
-            <label><span>Escort 1</span><select id="battleDefenderEscort1" data-battle-setting="defender-escort-1">${optionalVehicleOptions(battle.defenderEscort1)}</select></label>
-            <label><span>Escort 2</span><select id="battleDefenderEscort2" data-battle-setting="defender-escort-2">${optionalVehicleOptions(battle.defenderEscort2)}</select></label>
-            <label><span>Tactic</span><select id="battleDefenderTactic" data-battle-setting="defender-tactic">${tacticOptions(battleDefenderTactics, battle.defenderTactic)}</select></label>
-            <label><span>Defense Modifier</span><input id="battleDefenseBonus" type="number" value="${battle.defenseBonus}" min="-100" max="100" step="1" data-battle-setting="defense-modifier"></label>
+            <div class="card-row"><h4>${encounterRole === "merchant" ? "Player Merchant Convoy" : "NPC Encounter Cargo"}</h4><span class="pill">${roles[battle.defenderRole].label}</span></div>
+            ${encounterRole === "merchant" ? `
+              <label><span>Defender Role</span><select id="battleDefenderRole" data-battle-setting="defender-role">${defenderRoleChoices(battle.defenderRole, battle.attackerRole)}</select></label>
+              <label><span>${cargoVehicleLabel}</span><select id="battleDefenderVehicle" data-battle-setting="defender">${vehicleOptions(battle.defenderVehicle)}</select></label>
+              <label><span>Escort 1</span><select id="battleDefenderEscort1" data-battle-setting="defender-escort-1">${optionalVehicleOptions(battle.defenderEscort1)}</select></label>
+              <label><span>Escort 2</span><select id="battleDefenderEscort2" data-battle-setting="defender-escort-2">${optionalVehicleOptions(battle.defenderEscort2)}</select></label>
+              <label><span>Defense Modifier</span><input id="battleDefenseBonus" type="number" value="${battle.defenseBonus}" min="-100" max="100" step="1" data-battle-setting="defense-modifier"></label>
+            ` : `<p class="muted">This side is generated from the selected encounter target. Use routejack convoy controls to tune the player raid build.</p>`}
           </section>
         </div>
         <div class="battle-module-panel">
@@ -2557,25 +2732,26 @@ function renderBattleSimulator() {
             <div class="battle-unit-grid">${defenderUnitRows || `<p class="muted">No defender vehicles selected.</p>`}</div>
           </section>
         </div>
-        <p class="muted">Cargo wins by reaching 100 escape progress, surviving the tick limit, or seeing all attackers disabled. Attackers win by reducing the cargo vehicle to 0 integrity.</p>
+        <p class="muted">Battles continue until one side has no active vehicles. Merchant wins continue the shipment with restored HP; Routejack wins keep eligible cargo and continue the raid route.</p>
         <div class="button-row">
-          <button type="button" data-admin="battle-single">Run One Trial</button>
+          <button type="button" data-admin="battle-single">Run One Encounter</button>
           <button type="button" data-admin="battle-live">Watch Live Replay</button>
           <button type="button" data-admin="battle-batch">Run Batch</button>
         </div>
       </div>
     </div>
-    <div class="battle-build-panel">
-      <div class="blueprint-head">
+    <details class="battle-build-panel">
+      <summary class="blueprint-head">
         <div>
-          <h3>Build Comparison Lab</h3>
+          <h3>Advanced Balance Lab</h3>
           <p class="muted">Save the current route party as Build A or Build B, then run both through the same number of simulations for balance work.</p>
         </div>
-        <button type="button" data-admin="battle-compare">Compare Builds</button>
-      </div>
+        <span class="pill">optional</span>
+      </summary>
+      <div class="button-row"><button type="button" data-admin="battle-compare">Compare Builds</button></div>
       <div class="battle-build-grid">${buildCards}</div>
       ${renderBattleComparisonResult(state.battleComparisonResult)}
-    </div>
+    </details>
     ${renderLiveBattleReplay(state.battleReplay)}
     ${renderBattleSimResult(state.battleSimResult)}
   </article>`;
@@ -2687,7 +2863,7 @@ function renderAdmin() {
           <button type="button" data-admin="export-save">Export Snapshot</button>
           <button type="button" data-admin="copy-summary">Copy Summary</button>
         </div>
-        <p class="muted" id="adminMessage">Admin tools affect the current prototype session only. Refreshing starts from a clean profile.</p>
+        <p class="muted" id="adminMessage">Admin tools affect this browser-local playtest save. New Test starts from a clean profile.</p>
       </article>
     </div>`;
 }
@@ -2762,7 +2938,7 @@ function renderMeldActionSheet(sheet) {
   const moveSource = ownedPositions.find(({ district }) => district.id !== state.homeCity && routePath(district.id, state.homeCity).length > 1);
   const movePath = moveSource ? routePath(moveSource.district.id, state.homeCity) : [];
   return {
-    title: itemName,
+    title: itemLabel(item),
     eyebrow: "Ingredient actions",
     body: `Home city: ${homeDistrict().name}. Owned: ${ownedPositions.map(({ district, count }) => `${district.name} x${count}`).join(", ") || "none"}.`,
     actions: [
@@ -2792,7 +2968,7 @@ function renderCollectionActionSheet(sheet) {
   const localBid = highestBid(cityId, itemName);
   const available = inventoryFor(cityId)[itemName] || 0;
   return {
-    title: itemName,
+    title: itemLabel(item),
     eyebrow: "Collected output",
     body: `${available} kept in ${districtById(cityId).name}.`,
     actions: [
@@ -2820,7 +2996,7 @@ function renderInventoryActionSheet(sheet) {
   const protectedItem = shouldProtectInventoryItem(itemName);
   const canShip = state.role === "merchant" && item.category !== "vehicle" && available > 0;
   return {
-    title: itemName,
+    title: itemLabel(item),
     eyebrow: `${districtById(cityId).name} inventory`,
     body: `${available} owned here. ${protectedItem ? "Protected as a meld ingredient." : "Choose one action for this item."}`,
     actions: [
@@ -3079,6 +3255,17 @@ function handleAdmin(action) {
     state.routeEncounterCatalog = normalizeRouteEncounterCatalog(defaultRouteEncounterCatalog);
     addFeed("Admin", "encounters reset", "data");
   }
+  if (action === "set-encounter-rates") {
+    state.encounterRatesPerMile = normalizeEncounterRatesPerMile(Object.fromEntries(Object.keys(encounterTierMeta).map((tier) => [
+      tier,
+      Number(document.querySelector(`#encounter-rate-${tier}`)?.value || 0) / 100,
+    ])));
+    addFeed("Admin", "encounter rates updated", "data");
+  }
+  if (action === "reset-encounter-rates") {
+    state.encounterRatesPerMile = defaultEncounterRatesPerMile();
+    addFeed("Admin", "encounter rates reset", "data");
+  }
   if (action === "save-npc-units") {
     try {
       const raw = document.querySelector("#adminNpcUnitJson")?.value || "[]";
@@ -3095,6 +3282,116 @@ function handleAdmin(action) {
     state.npcCombatUnitCatalog = normalizeNpcCombatUnitCatalog(defaultNpcCombatUnitCatalog);
     state.routeEncounterCatalog = normalizeRouteEncounterCatalog(state.routeEncounterCatalog);
     addFeed("Admin", "NPC units reset", "data");
+  }
+  if (action === "creator-save-encounter") {
+    const catalog = routeEncounterCatalog();
+    const encounter = catalog.find((entry) => entry.id === state.adminCreatorEncounterId) || catalog[0];
+    if (encounter) {
+      encounter.label = document.querySelector("#creatorEncounterLabel")?.value || encounter.label;
+      encounter.role = document.querySelector("#creatorEncounterRole")?.value === "routejack" ? "routejack" : "merchant";
+      encounter.encounterTier = Object.keys(encounterTierMeta).includes(document.querySelector("#creatorEncounterTier")?.value)
+        ? document.querySelector("#creatorEncounterTier").value
+        : encounter.encounterTier;
+      encounter.rateMultiplier = Math.max(0, Math.min(20, Number(document.querySelector("#creatorEncounterRateMultiplier")?.value || 1)));
+      encounter.summary = document.querySelector("#creatorEncounterSummary")?.value || "";
+      (encounter.waves || []).forEach((wave, index) => {
+        wave.label = document.querySelector(`#creatorWaveLabel-${index}`)?.value || wave.label || `Wave ${index + 1}`;
+      });
+      state.routeEncounterCatalog = normalizeRouteEncounterCatalog(catalog);
+      addFeed("Admin", "encounter saved", "data");
+    }
+  }
+  if (action === "creator-add-wave") {
+    const catalog = routeEncounterCatalog();
+    const encounter = catalog.find((entry) => entry.id === state.adminCreatorEncounterId) || catalog[0];
+    if (encounter) {
+      encounter.waves = Array.isArray(encounter.waves) && encounter.waves.length ? encounter.waves : [encounter];
+      const next = encounter.waves.length + 1;
+      encounter.waves.push({
+        id: `${encounter.id}-wave-${next}`,
+        label: `Wave ${next}`,
+        weight: 1,
+      });
+      state.routeEncounterCatalog = normalizeRouteEncounterCatalog(catalog);
+    }
+  }
+  if (action.startsWith("creator-add-unit-")) {
+    const waveIndex = Number(action.replace("creator-add-unit-", ""));
+    const unitId = document.querySelector(`#creatorAddUnit-${waveIndex}`)?.value;
+    const catalog = routeEncounterCatalog();
+    const encounter = catalog.find((entry) => entry.id === state.adminCreatorEncounterId) || catalog[0];
+    const wave = encounter?.waves?.[waveIndex];
+    if (wave && unitId) {
+      const field = encounter.role === "routejack" ? "defenderUnits" : "attackerUnits";
+      wave[field] = normalizeNpcUnitRefs(wave[field]);
+      wave[field].push(unitId);
+      state.routeEncounterCatalog = normalizeRouteEncounterCatalog(catalog);
+    }
+  }
+  if (action.startsWith("creator-remove-unit-")) {
+    const [, , , waveRaw, unitRaw] = action.split("-");
+    const waveIndex = Number(waveRaw);
+    const unitIndex = Number(unitRaw);
+    const catalog = routeEncounterCatalog();
+    const encounter = catalog.find((entry) => entry.id === state.adminCreatorEncounterId) || catalog[0];
+    const wave = encounter?.waves?.[waveIndex];
+    if (wave) {
+      const field = encounter.role === "routejack" ? "defenderUnits" : "attackerUnits";
+      wave[field] = normalizeNpcUnitRefs(wave[field]).filter((_, index) => index !== unitIndex);
+      state.routeEncounterCatalog = normalizeRouteEncounterCatalog(catalog);
+    }
+  }
+  if (action.startsWith("creator-remove-wave-")) {
+    const waveIndex = Number(action.replace("creator-remove-wave-", ""));
+    const catalog = routeEncounterCatalog();
+    const encounter = catalog.find((entry) => entry.id === state.adminCreatorEncounterId) || catalog[0];
+    if (encounter?.waves?.length > 1) {
+      encounter.waves = encounter.waves.filter((_, index) => index !== waveIndex);
+      state.routeEncounterCatalog = normalizeRouteEncounterCatalog(catalog);
+    }
+  }
+  if (action === "creator-save-units") {
+    const existing = Object.fromEntries(npcCombatUnitCatalog().map((unit) => [unit.id, unit]));
+    const rows = [...document.querySelectorAll("[data-npc-unit-id]")];
+    state.npcCombatUnitCatalog = normalizeNpcCombatUnitCatalog(rows.map((row) => {
+      const id = row.dataset.npcUnitId;
+      const previous = existing[id] || {};
+      const readNumber = (field, fallback) => {
+        const value = row.querySelector(`[data-unit-field="${field}"]`)?.value;
+        return value === undefined || value === "" ? fallback : Number(value);
+      };
+      const attackMin = readNumber("attackMin", previous.attackMin ?? previous.impact ?? 1);
+      const attackMax = readNumber("attackMax", previous.attackMax ?? previous.impact ?? attackMin);
+      const lowAttack = Math.min(attackMin, attackMax);
+      const highAttack = Math.max(attackMin, attackMax);
+      return {
+        ...previous,
+        id,
+        label: row.querySelector('[data-unit-field="label"]')?.value || previous.label || id,
+        role: row.querySelector('[data-unit-field="role"]')?.value || previous.role || "support",
+        maxHp: readNumber("maxHp", previous.maxHp ?? 50),
+        attackMin: lowAttack,
+        attackMax: highAttack,
+        impact: Math.round((lowAttack + highAttack) / 2),
+        speed: readNumber("speed", previous.speed ?? 16),
+      };
+    }));
+    state.routeEncounterCatalog = normalizeRouteEncounterCatalog(state.routeEncounterCatalog);
+    addFeed("Admin", "enemy stats saved", "data");
+  }
+  if (action === "creator-add-unit-template") {
+    const existingIds = new Set(npcCombatUnitCatalog().map((unit) => unit.id));
+    let index = existingIds.size + 1;
+    let id = `custom-enemy-${index}`;
+    while (existingIds.has(id)) {
+      index += 1;
+      id = `custom-enemy-${index}`;
+    }
+    state.npcCombatUnitCatalog = normalizeNpcCombatUnitCatalog([
+      ...npcCombatUnitCatalog(),
+      { id, label: `Custom Enemy ${index}`, role: "raider", rarity: "green", iconName: "data", maxHp: 50, attackMin: 5, attackMax: 10, speed: 8 },
+    ]);
+    addFeed("Admin", "enemy template added", "data");
   }
   if (action === "seed-npc-traffic") seedNpcRouteTraffic(state, 12);
   if (action === "clear-npc-traffic") {
@@ -3221,11 +3518,6 @@ document.body.addEventListener("click", (event) => {
   }
   if (button.dataset.raidSupport2) {
     state.pvpSupport2 = button.dataset.raidSupport2;
-    render();
-    return;
-  }
-  if (button.dataset.routejackTacticChoice) {
-    state.routejackTactic = button.dataset.routejackTacticChoice;
     render();
     return;
   }
@@ -3532,11 +3824,6 @@ document.body.addEventListener("change", (event) => {
     render();
     return;
   }
-  if (event.target.id === "routejackTactic") {
-    state.routejackTactic = event.target.value;
-    render();
-    return;
-  }
   if (event.target.id === "pvpLootPolicy") {
     state.pvpLootPolicy = event.target.value;
     render();
@@ -3544,6 +3831,11 @@ document.body.addEventListener("change", (event) => {
   }
   if (event.target.dataset.battleSetting) {
     updateBattleSimFromControls();
+    render();
+    return;
+  }
+  if (event.target.id === "adminCreatorEncounter") {
+    state.adminCreatorEncounterId = event.target.value;
     render();
     return;
   }

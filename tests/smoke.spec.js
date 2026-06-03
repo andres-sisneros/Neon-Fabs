@@ -33,6 +33,7 @@ test("core screens render without browser errors", async ({ page }, testInfo) =>
     ["profile", "drifter"],
     ["fabs", "drifter"],
     ["inventory", "drifter"],
+    ["melds", "drifter"],
     ["shop", "drifter"],
     ["shipments", "merchant"],
     ["shipments", "routejack"],
@@ -106,10 +107,81 @@ test("merchant can load mixed cargo and send shipment", async ({ page }) => {
 test("admin route activity shows player jobs, not npc traffic controls", async ({ page }) => {
   await openGame(page, "admin", "merchant");
   await expect(page.getByText("Admin Route Activity")).toBeVisible();
-  await expect(page.getByText("Encounter Designer")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Encounter Designer" })).toBeVisible();
+  await expect(page.getByText("Enemy Library")).toBeVisible();
+  await page.getByText("Raw JSON", { exact: true }).click();
   await expect(page.getByText("Custom NPC Units")).toBeVisible();
   await expect(page.getByText("Seed NPC Traffic")).toHaveCount(0);
   await expect(page.getByText("Clear NPC Traffic")).toHaveCount(0);
+});
+
+test("melds page uses compact visual set cards", async ({ page }) => {
+  await openGame(page, "melds", "drifter");
+
+  await expect(page.getByText("Meld Sets")).toBeVisible();
+  await expect(page.locator(".meld-card")).toHaveCount(5);
+  await expect(page.locator(".meld-card.ready")).toContainText("Common Starter Meld");
+  await expect(page.locator(".meld-token.ready")).not.toHaveCount(0);
+  await expect(page.locator(".meld-token.missing")).not.toHaveCount(0);
+  await expect(page.getByText("Home Ask")).toHaveCount(0);
+  await expect(page.getByText("Best Ask")).toHaveCount(0);
+  await expect(page.getByText("Move Path")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Fuse" })).toBeVisible();
+});
+
+test("creative overrides and playtest save survive refresh", async ({ page }) => {
+  await openGame(page, "inventory", "drifter");
+  await page.evaluate(() => {
+    state.credits = 321;
+    render();
+    savePlaytestState(true);
+  });
+  await expect(page.locator("#walletSummary")).toContainText("321cr");
+
+  await page.reload();
+  await page.waitForFunction(() => window.state && window.render);
+  await expect(page.locator("#walletSummary")).toContainText("321cr");
+  await expect(page.locator(".brand")).toContainText("Neon Fabs");
+  await expect(page.locator(".brand")).toContainText("Lowline testnet");
+
+  await page.evaluate(() => {
+    clearPrototypeSaves();
+    state = seedState(defaultState());
+    render();
+    savePlaytestState(true);
+  });
+  await expect(page.locator("#walletSummary")).toContainText("0cr");
+});
+
+test("admin simulator runs designed encounters for merchant and routejack convoys", async ({ page }) => {
+  await openGame(page, "admin", "merchant");
+
+  await expect(page.getByText("Encounter Setup")).toBeVisible();
+  await expect(page.getByText("Encounter Rate Calculator")).toBeVisible();
+  await expect(page.locator("#encounter-rate-common")).toHaveValue("2.00");
+  await expect(page.locator("#encounter-rate-uncommon")).toHaveValue("1.00");
+  await expect(page.locator("#encounter-rate-rare")).toHaveValue("0.50");
+  await expect(page.getByText("Base Tier Total")).toBeVisible();
+  await expect(page.getByText("Player Merchant Convoy")).toBeVisible();
+  await expect(page.getByText("NPC Encounter Raiders")).toBeVisible();
+  await expect(page.locator("#battleEncounterId option")).toHaveCount(3);
+  await expect(page.locator("#battleEncounterId")).toContainText("Static Skimmers");
+  await expect(page.locator("#battleEncounterId")).toContainText("Toll Hounds");
+  await expect(page.locator("#battleEncounterId")).toContainText("Black Ledger Crew");
+  await page.getByRole("button", { name: "Run Batch" }).click();
+  await expect(page.locator(".battle-results")).toContainText("Merchant Shipment");
+  await expect(page.locator(".battle-results")).toContainText("Static Skimmers");
+
+  await page.locator("#battleEncounterRole").selectOption("routejack");
+  await expect(page.getByText("Player Routejack Convoy")).toBeVisible();
+  await expect(page.getByText("NPC Encounter Cargo")).toBeVisible();
+  await expect(page.locator("#battleEncounterId option")).toHaveCount(3);
+  await expect(page.locator("#battleEncounterId")).toContainText("Market Mule");
+  await expect(page.locator("#battleEncounterId")).toContainText("Armored Haul");
+  await expect(page.locator("#battleEncounterId")).toContainText("Arcology Transfer");
+  await page.getByRole("button", { name: "Run One Encounter" }).click();
+  await expect(page.locator(".battle-results")).toContainText("Routejack Raid");
+  await expect(page.locator(".battle-results")).toContainText("Market Mule");
 });
 
 test("route encounters roll during travel and save a battle replay", async ({ page }) => {
@@ -121,7 +193,8 @@ test("route encounters roll during travel and save a battle replay", async ({ pa
       role: "merchant",
       label: "Test Road Ambush",
       weight: 1,
-      ratePerHour: 0.95,
+      encounterTier: "common",
+      rateMultiplier: 9.5,
       routeKinds: ["land"],
       minMiles: 0,
       maxMiles: 999,
@@ -145,7 +218,7 @@ test("route encounters roll during travel and save a battle replay", async ({ pa
   await expect(page.locator(".shipment-card").filter({ hasText: "Test Road Ambush" }).first()).toBeVisible();
 });
 
-test("custom npc hazard can disable a convoy without stolen goods", async ({ page }) => {
+test("custom npc unit can drive a route battle with core stats", async ({ page }) => {
   await openGame(page, "shipments", "merchant");
 
   const result = await page.evaluate(() => {
@@ -154,18 +227,17 @@ test("custom npc hazard can disable a convoy without stolen goods", async ({ pag
       role: "merchant",
       label: "Test Route Hazard",
       weight: 1,
-      ratePerHour: 0.95,
+      encounterTier: "common",
+      rateMultiplier: 9.5,
       routeKinds: ["land"],
       minMiles: 0,
       maxMiles: 999,
       difficulty: 4,
       rarityCeiling: "purple",
-      failureMode: "destroy",
       cargoUnits: 1,
       waves: [{
         id: "test-breaker-wave",
         label: "Test Breaker Wave",
-        failureMode: "destroy",
         attackerUnits: [{
           id: "test-breaker",
           label: "Test Breaker",
@@ -173,9 +245,10 @@ test("custom npc hazard can disable a convoy without stolen goods", async ({ pag
           rarity: "purple",
           iconName: "cell",
           maxHp: 999,
+          attackMin: 999,
+          attackMax: 999,
           speed: 200,
           impact: 999,
-          escapeDrag: 60,
         }],
       }],
     }]);
@@ -193,9 +266,9 @@ test("custom npc hazard can disable a convoy without stolen goods", async ({ pag
     };
   });
 
-  expect(result.outcome).toBe("destroyed");
+  expect(result.outcome).toBe("stolen");
   expect(result.title).toContain("Test Route Hazard");
-  expect(result.stolen).toBe(0);
+  expect(result.stolen).toBe(1);
   expect(result.shipmentStatus).toBe("raided");
-  await expect(page.locator(".shipment-card").filter({ hasText: "Convoy Disabled" }).first()).toBeVisible();
+  await expect(page.locator(".shipment-card").filter({ hasText: "Cargo Taken" }).first()).toBeVisible();
 });

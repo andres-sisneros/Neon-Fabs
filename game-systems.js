@@ -1,15 +1,54 @@
 // Game systems, state normalization, simulation rules, and player actions. Loaded after game-content.js and before app.js.
 let browserHistoryRestoring = false;
+let lastPlaytestSaveAt = 0;
 
 function loadState() {
-  clearPrototypeSaves();
-  return seedState(defaultState());
+  clearLegacySaves();
+  return seedState(readPlaytestSave() || defaultState());
+}
+
+function clearLegacySaves() {
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(LEGACY_SAVE_PREFIX) && key !== PLAYTEST_SAVE_KEY)
+    .forEach((key) => localStorage.removeItem(key));
 }
 
 function clearPrototypeSaves() {
-  Object.keys(localStorage)
-    .filter((key) => key.startsWith(LEGACY_SAVE_PREFIX))
-    .forEach((key) => localStorage.removeItem(key));
+  clearLegacySaves();
+  localStorage.removeItem(PLAYTEST_SAVE_KEY);
+}
+
+function readPlaytestSave() {
+  try {
+    const raw = localStorage.getItem(PLAYTEST_SAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?._saveVersion !== PLAYTEST_SAVE_VERSION) return null;
+    return { ...parsed, _existingSave: true };
+  } catch (error) {
+    return null;
+  }
+}
+
+function playtestSaveSnapshot() {
+  const snapshot = JSON.parse(JSON.stringify(state));
+  snapshot._saveVersion = PLAYTEST_SAVE_VERSION;
+  snapshot._savedAt = Date.now();
+  snapshot.pendingConfirm = null;
+  snapshot.actionSheet = null;
+  if (snapshot.battleReplay?.playing) snapshot.battleReplay.playing = false;
+  return snapshot;
+}
+
+function savePlaytestState(force = false) {
+  const now = Date.now();
+  if (!force && now - lastPlaytestSaveAt < 5000) return;
+  try {
+    localStorage.setItem(PLAYTEST_SAVE_KEY, JSON.stringify(playtestSaveSnapshot()));
+    lastPlaytestSaveAt = now;
+  } catch (error) {
+    // Local save is a playtest convenience; storage failures should not block gameplay.
+  }
 }
 
 function seedState(nextState) {
@@ -84,7 +123,6 @@ function seedState(nextState) {
   nextState.pvpSupport1 = itemByName(nextState.pvpSupport1)?.category === "vehicle" ? nextState.pvpSupport1 : "none";
   nextState.pvpSupport2 = itemByName(nextState.pvpSupport2)?.category === "vehicle" ? nextState.pvpSupport2 : "none";
   nextState.pvpLootPolicy = ["first", "upgrade"].includes(nextState.pvpLootPolicy) ? nextState.pvpLootPolicy : "upgrade";
-  nextState.routejackTactic = Object.keys(battleAttackerTactics).includes(nextState.routejackTactic) ? nextState.routejackTactic : "snatch";
   nextState.role = roles[nextState.role] ? nextState.role : "drifter";
   nextState.battleSim = normalizeBattleSettings(nextState.battleSim);
   nextState.battleSimResult = nextState.battleSimResult?.engine === "auto-battler" ? nextState.battleSimResult : null;
@@ -185,6 +223,7 @@ function seedState(nextState) {
   nextState.npcRouteTraffic = [];
   nextState.nextNpcTrafficAt = Number.isFinite(Number(nextState.nextNpcTrafficAt)) ? Number(nextState.nextNpcTrafficAt) : Date.now();
   nextState.npcCombatUnitCatalog = normalizeNpcCombatUnitCatalog(nextState.npcCombatUnitCatalog || defaultNpcCombatUnitCatalog);
+  nextState.encounterRatesPerMile = normalizeEncounterRatesPerMile(nextState.encounterRatesPerMile);
   nextState.routeEncounterCatalog = normalizeRouteEncounterCatalog(nextState.routeEncounterCatalog || defaultRouteEncounterCatalog);
   nextState.routeClearances = normalizeRouteClearances(nextState.routeClearances);
   if (nextState.inventory) {
@@ -205,6 +244,7 @@ function seedState(nextState) {
 
 function touchSessionState() {
   state.lastTick = Date.now();
+  savePlaytestState();
 }
 
 function allItems() {
@@ -225,6 +265,16 @@ function knownItemName(name) {
 
 function itemByName(name) {
   return allItems().find((item) => item.name === name) || allItems()[0];
+}
+
+function itemLabel(itemOrName) {
+  const item = typeof itemOrName === "string" ? itemByName(itemOrName) : itemOrName;
+  return item?.displayName || item?.name || String(itemOrName || "");
+}
+
+function meldLabel(meldOrName) {
+  const meld = typeof meldOrName === "string" ? melds.find((candidate) => candidate.name === meldOrName) : meldOrName;
+  return meld?.displayName || meld?.name || String(meldOrName || "");
 }
 
 function allVehicleItems() {
@@ -915,6 +965,10 @@ function normalizeNpcCombatUnitCatalog(catalog = defaultNpcCombatUnitCatalog) {
       const role = ["raider", "support", "cargo", "escort"].includes(entry.role) ? entry.role : "support";
       const rarity = rarityOrder.includes(entry.rarity) ? entry.rarity : "green";
       const id = String(entry.id || `npc-unit-${index + 1}`).replace(/[^a-z0-9-_]/gi, "-").toLowerCase();
+      const rawAttackMin = Math.max(0, Math.min(220, Math.round(Number(entry.attackMin ?? entry.impact ?? 8))));
+      const rawAttackMax = Math.max(0, Math.min(220, Math.round(Number(entry.attackMax ?? entry.impact ?? rawAttackMin))));
+      const attackMin = Math.min(rawAttackMin, rawAttackMax);
+      const attackMax = Math.max(rawAttackMin, rawAttackMax);
       return {
         id,
         label: String(entry.label || id),
@@ -922,12 +976,13 @@ function normalizeNpcCombatUnitCatalog(catalog = defaultNpcCombatUnitCatalog) {
         rarity,
         iconName: String(entry.iconName || "data"),
         maxHp: Math.max(1, Math.min(999, Math.round(Number(entry.maxHp || 50)))),
+        attackMin,
+        attackMax,
         speed: Math.max(1, Math.min(160, Math.round(Number(entry.speed || 16)))),
-        impact: Math.max(0, Math.min(220, Math.round(Number(entry.impact || 8)))),
+        impact: Math.max(0, Math.min(220, Math.round(Number(entry.impact ?? ((attackMin + attackMax) / 2))))),
         braveChance: Math.max(0, Math.min(95, Math.round(Number(entry.braveChance || 0)))),
-        escapeDrag: Math.max(0, Math.min(80, Math.round(Number(entry.escapeDrag || 0)))),
-        targetMode: ["cargo", "highest-impact", "weakest"].includes(entry.targetMode) ? entry.targetMode : "cargo",
         triggers: normalizeNpcUnitTriggers(entry.triggers),
+        futureHooks: Array.isArray(entry.futureHooks) ? entry.futureHooks.map(String) : [],
         summary: String(entry.summary || ""),
       };
     })
@@ -986,7 +1041,6 @@ function normalizeRouteEncounterWave(base, wave = {}, index = 0) {
     supportChance: Math.max(0, Math.min(1, Number(wave.supportChance ?? base.supportChance ?? 0))),
     escortChance: Math.max(0, Math.min(1, Number(wave.escortChance ?? base.escortChance ?? 0))),
     cargoUnits: Math.max(1, Math.min(8, Math.floor(Number(wave.cargoUnits ?? base.cargoUnits ?? 1)))),
-    failureMode: ["steal", "destroy"].includes(wave.failureMode || base.failureMode) ? (wave.failureMode || base.failureMode) : "steal",
     attackerUnits: normalizeNpcUnitRefs(wave.attackerUnits ?? base.attackerUnits),
     defenderUnits: normalizeNpcUnitRefs(wave.defenderUnits ?? base.defenderUnits),
   };
@@ -997,25 +1051,68 @@ function normalizeRouteEncounterWaves(entry, base) {
   return source.map((wave, index) => normalizeRouteEncounterWave(base, wave, index));
 }
 
+function normalizeEncounterRatesPerMile(rates = {}) {
+  return Object.fromEntries(Object.entries(encounterTierMeta).map(([tier, meta]) => {
+    const value = Number(rates?.[tier]);
+    return [tier, Math.max(0, Math.min(0.95, Number.isFinite(value) ? value : meta.defaultRatePerMile))];
+  }));
+}
+
+function encounterTierFromDifficulty(difficulty = 0) {
+  if (Number(difficulty || 0) >= 3) return "rare";
+  if (Number(difficulty || 0) >= 1) return "uncommon";
+  return "common";
+}
+
+function encounterBaseRatePerMile(tier) {
+  const rates = typeof state === "undefined"
+    ? defaultEncounterRatesPerMile()
+    : normalizeEncounterRatesPerMile(state.encounterRatesPerMile);
+  return rates[tier] ?? encounterTierMeta[tier]?.defaultRatePerMile ?? 0;
+}
+
+function encounterRatePerMile(encounter) {
+  if (!encounter) return 0;
+  return Math.max(0, Math.min(0.95, encounterBaseRatePerMile(encounter.encounterTier) * Number(encounter.rateMultiplier || 1)));
+}
+
 function normalizeRouteEncounterCatalog(catalog = defaultRouteEncounterCatalog) {
   const source = Array.isArray(catalog) && catalog.length ? catalog : defaultRouteEncounterCatalog;
   return source
     .map((entry, index) => {
       const role = entry.role === "routejack" ? "routejack" : "merchant";
-      const rarityCeiling = rarityOrder.includes(entry.rarityCeiling) ? entry.rarityCeiling : "green";
+      const difficulty = Math.max(0, Math.min(4, Math.floor(Number(entry.difficulty || 0))));
+      const encounterTier = Object.keys(encounterTierMeta).includes(entry.encounterTier)
+        ? entry.encounterTier
+        : encounterTierFromDifficulty(difficulty);
+      const rarityCeiling = rarityOrder.includes(entry.rarityCeiling)
+        ? entry.rarityCeiling
+        : encounterTierMeta[encounterTier]?.rarity || "green";
       const routeKinds = Array.isArray(entry.routeKinds) && entry.routeKinds.length
         ? entry.routeKinds.filter((kind) => ["land", "water"].includes(kind))
         : ["land", "water"];
+      const baseRate = encounterTierMeta[encounterTier]?.defaultRatePerMile || 0.01;
+      const legacyRate = Number.isFinite(Number(entry.ratePerMile))
+        ? Number(entry.ratePerMile)
+        : Number.isFinite(Number(entry.ratePerHour))
+          ? Number(entry.ratePerHour)
+          : null;
+      const rateMultiplier = Number.isFinite(Number(entry.rateMultiplier))
+        ? Number(entry.rateMultiplier)
+        : legacyRate !== null
+          ? legacyRate / Math.max(0.001, baseRate)
+          : 1;
       const base = {
         id: String(entry.id || `encounter-${index + 1}`).replace(/[^a-z0-9-_]/gi, "-").toLowerCase(),
         role,
         label: String(entry.label || (role === "routejack" ? "NPC Cargo Target" : "NPC Raider")),
         weight: Math.max(1, Number(entry.weight || 1)),
-        ratePerHour: Math.max(0, Math.min(2, Number(entry.ratePerHour || 0))),
+        encounterTier,
+        rateMultiplier: Math.max(0, Math.min(20, rateMultiplier)),
         routeKinds: routeKinds.length ? routeKinds : ["land", "water"],
         minMiles: Math.max(0, Number(entry.minMiles || 0)),
         maxMiles: Math.max(1, Number(entry.maxMiles || 9999)),
-        difficulty: Math.max(0, Math.min(4, Math.floor(Number(entry.difficulty || 0)))),
+        difficulty,
         rarityCeiling,
         attackerClasses: Array.isArray(entry.attackerClasses) && entry.attackerClasses.length ? entry.attackerClasses : ["interceptor", "runner"],
         attackerSupportClasses: Array.isArray(entry.attackerSupportClasses) ? entry.attackerSupportClasses : [],
@@ -1023,7 +1120,6 @@ function normalizeRouteEncounterCatalog(catalog = defaultRouteEncounterCatalog) 
         supportChance: Math.max(0, Math.min(1, Number(entry.supportChance || 0))),
         escortChance: Math.max(0, Math.min(1, Number(entry.escortChance || 0))),
         cargoUnits: Math.max(1, Math.min(6, Math.floor(Number(entry.cargoUnits || 1)))),
-        failureMode: ["steal", "destroy"].includes(entry.failureMode) ? entry.failureMode : "steal",
         attackerUnits: normalizeNpcUnitRefs(entry.attackerUnits),
         defenderUnits: normalizeNpcUnitRefs(entry.defenderUnits),
         clearHours: Math.max(0, Math.min(24, Number(entry.clearHours || 0))),
@@ -1033,7 +1129,7 @@ function normalizeRouteEncounterCatalog(catalog = defaultRouteEncounterCatalog) 
       base.waves = normalizeRouteEncounterWaves(entry, base);
       return base;
     })
-    .filter((entry) => entry.ratePerHour > 0 && entry.minMiles <= entry.maxMiles);
+    .filter((entry) => entry.rateMultiplier > 0 && entry.minMiles <= entry.maxMiles);
 }
 
 function routeEncounterCatalog() {
@@ -1287,7 +1383,8 @@ function routeJobDetail(shipment) {
   const profile = vehicle?.category === "vehicle" ? `${profileBand(vehicleProfileScore(vehicle))} profile` : "unknown profile";
   const sensor = vehicle?.category === "vehicle" ? `${vehicleSensorScore(vehicle)} sensor` : "unknown sensor";
   const route = routeBetween(shipment.from, shipment.to);
-  const encounter = route ? `Encounter ${routeEncounterHourlyChance(shipment, route)}%/hr` : "Encounter unknown";
+  const encounterSummary = route ? routeEncounterFullRouteSummary(shipment, route) : null;
+  const encounter = encounterSummary ? `Encounters ${encounterSummary.expected.toFixed(1)} expected, ${formatOdds(encounterSummary.chance * 100)} route chance` : "Encounter unknown";
   const clearance = route ? routeClearanceSummary(shipment.from, shipment.to) : "";
   const routeState = clearance ? `${encounter}; ${clearance}` : encounter;
   if (shipment.kind === "intercept") {
@@ -1314,49 +1411,119 @@ function routeDetectionRoll(hunterVehicle, targetVehicle, cargoUnits = 1, option
 }
 
 function routeEncounterChance(route, vehicle, cargoUnits = 1, options = {}) {
-  const miles = routeDistance(route);
-  const profile = vehicleProfileScore(vehicle);
-  const cargoPressure = Math.max(0, Number(cargoUnits || 1) - 1) * 5;
-  const routePressure = Math.min(28, miles / 7);
-  const speedReduction = Math.min(14, vehicleMph(vehicle) * 0.08);
-  const escortReduction = options.escort ? 10 : 0;
-  const roleReduction = Number.isFinite(Number(options.roleReduction)) ? Number(options.roleReduction) : (currentRole().riskReduction || 0);
-  const chance = 8 + routePressure + profile * 0.34 + cargoPressure - speedReduction - escortReduction - roleReduction;
-  return Math.round(Math.max(5, Math.min(70, chance)));
+  const sample = {
+    from: options.fromCityId || state.district,
+    to: route.to,
+    vehicle: vehicle.name,
+    cargoUnits,
+    cargos: [{ name: "Common Starter Component A", qty: Math.max(1, Number(cargoUnits || 1)) }],
+    escortVehicle: options.escort ? "Common Guardian" : null,
+    riskReduction: Number(options.roleReduction || 0) / 100,
+  };
+  return routeEncounterFullRouteChance(sample, route);
 }
 
 function eligibleRouteEncounters(shipment, route) {
   const role = shipment.kind === "intercept" ? "routejack" : "merchant";
+  return routeEncounterCatalog().filter((entry) => entry.role === role);
+}
+
+function routeEncounterRateModifier(shipment, route) {
+  const vehicle = itemByName(shipment.vehicle);
+  const cargoUnits = shipment.kind === "intercept" ? 1 : shipmentCargoUnits(shipment);
+  const speedReduction = vehicle?.category === "vehicle" ? Math.min(0.28, Math.max(0, vehicleMph(vehicle) - 20) * 0.004) : 0;
+  const cargoPressure = shipment.kind === "intercept" ? 0 : Math.max(0, cargoUnits - 1) * 0.08;
+  const escortReduction = shipment.escortVehicle ? 0.10 : 0;
+  const savedReduction = Math.max(0, Math.min(0.85, Number(shipment.riskReduction || 0)));
+  const clearance = routeRiskMultiplier(shipment.from, shipment.to);
+  const modifier = (1 + cargoPressure - speedReduction - escortReduction - savedReduction) * clearance;
+  return Math.max(0.05, Math.min(3, modifier));
+}
+
+function routeEncounterTierBreakdown(shipment, route) {
+  const entries = eligibleRouteEncounters(shipment, route);
+  const modifier = routeEncounterRateModifier(shipment, route);
+  return Object.keys(encounterTierMeta).map((tier) => {
+    const tierEntries = entries.filter((entry) => entry.encounterTier === tier);
+    const weightTotal = tierEntries.reduce((sum, entry) => sum + Number(entry.weight || 1), 0);
+    const weightedMultiplier = weightTotal
+      ? tierEntries.reduce((sum, entry) => sum + Number(entry.weight || 1) * Number(entry.rateMultiplier || 1), 0) / weightTotal
+      : 0;
+    const ratePerMile = tierEntries.length ? encounterBaseRatePerMile(tier) * weightedMultiplier * modifier : 0;
+    return {
+      tier,
+      label: encounterTierMeta[tier].label,
+      entries: tierEntries,
+      ratePerMile: Math.max(0, Math.min(0.95, ratePerMile)),
+    };
+  });
+}
+
+function routeEncounterRatePerMile(shipment, route) {
+  return routeEncounterTierBreakdown(shipment, route).reduce((sum, entry) => sum + entry.ratePerMile, 0);
+}
+
+function routeEncounterExpectedForMiles(shipment, route, miles) {
+  return routeEncounterRatePerMile(shipment, route) * Math.max(0, Number(miles || 0));
+}
+
+function routeEncounterChanceForMiles(shipment, route, miles) {
+  const expected = routeEncounterExpectedForMiles(shipment, route, miles);
+  return 1 - Math.exp(-expected);
+}
+
+function routeEncounterFullRouteSummary(shipment, route) {
   const miles = routeDistance(route);
-  const kind = routeKind(route);
-  return routeEncounterCatalog().filter((entry) => entry.role === role
-    && entry.routeKinds.includes(kind)
-    && miles >= entry.minMiles
-    && miles <= entry.maxMiles);
+  const tiers = routeEncounterTierBreakdown(shipment, route).map((entry) => ({
+    ...entry,
+    expected: entry.ratePerMile * miles,
+    chance: 1 - Math.exp(-entry.ratePerMile * miles),
+  }));
+  const expected = tiers.reduce((sum, tier) => sum + tier.expected, 0);
+  const chance = 1 - Math.exp(-expected);
+  return {
+    miles,
+    modifier: routeEncounterRateModifier(shipment, route),
+    ratePerMile: routeEncounterRatePerMile(shipment, route),
+    expected,
+    chance,
+    tiers,
+  };
+}
+
+function routeEncounterFullRouteChance(shipment, route) {
+  return Math.round(Math.max(0, Math.min(99.9, routeEncounterFullRouteSummary(shipment, route).chance * 100)));
 }
 
 function routeEncounterRatePerHour(shipment, route) {
-  const entries = eligibleRouteEncounters(shipment, route);
-  const baseRate = entries.reduce((sum, entry) => sum + Number(entry.ratePerHour || 0), 0);
-  const loadPressure = shipment.kind === "intercept" ? 1 : 1 + Math.max(0, shipmentCargoUnits(shipment) - 1) * 0.08;
-  const clearance = routeRiskMultiplier(shipment.from, shipment.to);
-  return Math.max(0, Math.min(1.8, baseRate * loadPressure * clearance));
+  const vehicle = itemByName(shipment.vehicle);
+  return routeEncounterRatePerMile(shipment, route) * Math.max(1, vehicle?.category === "vehicle" ? vehicleMph(vehicle) : 1);
 }
 
 function routeEncounterHourlyChance(shipment, route) {
-  return Math.round(Math.max(0, Math.min(95, routeEncounterRatePerHour(shipment, route) * 100)));
+  return Math.round(Math.max(0, Math.min(99.9, routeEncounterRatePerHour(shipment, route) * 100)));
 }
 
 function pickRouteEncounter(shipment, route) {
-  const entries = eligibleRouteEncounters(shipment, route);
-  const total = entries.reduce((sum, entry) => sum + (entry.weight * Math.max(0.01, entry.ratePerHour)), 0);
-  if (!total) return null;
+  const tierBreakdown = routeEncounterTierBreakdown(shipment, route).filter((entry) => entry.entries.length && entry.ratePerMile > 0);
+  const totalRate = tierBreakdown.reduce((sum, entry) => sum + entry.ratePerMile, 0);
+  if (!totalRate) return null;
+  let tierRoll = Math.random() * totalRate;
+  let pickedTier = tierBreakdown[tierBreakdown.length - 1];
+  for (const tier of tierBreakdown) {
+    tierRoll -= tier.ratePerMile;
+    if (tierRoll <= 0) {
+      pickedTier = tier;
+      break;
+    }
+  }
+  const total = pickedTier.entries.reduce((sum, entry) => sum + Number(entry.weight || 1) * Number(entry.rateMultiplier || 1), 0);
   let roll = Math.random() * total;
-  for (const entry of entries) {
-    roll -= entry.weight * Math.max(0.01, entry.ratePerHour);
+  for (const entry of pickedTier.entries) {
+    roll -= Number(entry.weight || 1) * Number(entry.rateMultiplier || 1);
     if (roll <= 0) return entry;
   }
-  return entries[entries.length - 1] || null;
+  return pickedTier.entries[pickedTier.entries.length - 1] || null;
 }
 
 function pickEncounterWave(encounter) {
@@ -1373,16 +1540,23 @@ function pickEncounterWave(encounter) {
   return waves[0] || null;
 }
 
+function routeEncounterMilesForElapsed(shipment, route, elapsedMs) {
+  const routeMiles = routeDistance(route);
+  const totalMs = Math.max(60000, Number(shipment.arrivesAt || 0) - Number(shipment.startedAt || 0));
+  if (!routeMiles || !elapsedMs || !totalMs) return 0;
+  return Math.max(0, Math.min(routeMiles, routeMiles * (elapsedMs / totalMs)));
+}
+
 function rollRouteEncounter(shipment, route, elapsedMs) {
-  const elapsedHours = Math.max(0, elapsedMs / 3600000);
-  if (!elapsedHours) return null;
-  const hourlyRate = routeEncounterRatePerHour(shipment, route);
-  if (!hourlyRate) return null;
-  const chance = 1 - Math.pow(Math.max(0, 1 - Math.min(0.95, hourlyRate)), elapsedHours);
+  const elapsedMiles = routeEncounterMilesForElapsed(shipment, route, elapsedMs);
+  if (!elapsedMiles) return null;
+  const ratePerMile = routeEncounterRatePerMile(shipment, route);
+  if (!ratePerMile) return null;
+  const chance = routeEncounterChanceForMiles(shipment, route, elapsedMiles);
   const roll = Math.random();
   if (roll >= chance) return null;
   const encounter = pickRouteEncounter(shipment, route);
-  return encounter ? { encounter, wave: pickEncounterWave(encounter), chance, roll, elapsedHours } : null;
+  return encounter ? { encounter, wave: pickEncounterWave(encounter), chance, roll, elapsedMiles, ratePerMile } : null;
 }
 
 function routejackTargetRichness(route) {
@@ -1601,17 +1775,9 @@ function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
     cargoUnits: shipmentCargoUnits(shipment),
     attackerRole: "routejack",
     defenderRole: "merchant",
-    attackerTactic: "snatch",
-    defenderTactic: "protect",
     lootPolicy: patrol.lootPolicy || "upgrade",
-    failureMode: wave?.failureMode || encounter?.failureMode || "steal",
   });
   const battleRun = simulateAutoBattleRun(settings, route);
-  if (settings.failureMode === "destroy" && battleRun.outcome === "stolen") {
-    battleRun.outcome = "destroyed";
-    const final = battleRun.log.findLast?.((entry) => entry.type === "outcome");
-    if (final) final.text = `${wave?.label || encounter?.label || "Route threat"} disabled the convoy instead of stealing cargo.`;
-  }
   const record = recordRouteBattle({
     kind: "npc-raider-merchant",
     title: `${encounter?.label || "NPC encounter"}${wave?.label && wave.label !== encounter?.label ? ` / ${wave.label}` : ""}: ${shipmentCargoShortLabel(shipment)}`,
@@ -1622,9 +1788,9 @@ function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
     run: battleRun,
     relatedShipments: [shipment, patrol],
   });
-  if (!["stolen", "destroyed"].includes(battleRun.outcome)) {
+  if (battleRun.outcome !== "stolen") {
     addShipmentEvent(shipment, `NPC raider encounter engaged and failed. Battle replay ${record.id} recorded.`);
-    addShipmentEvent(patrol, `Engaged ${shipment.vehicle}; cargo escaped. Battle replay ${record.id} recorded.`);
+    addShipmentEvent(patrol, `Engaged ${shipment.vehicle}; defenders won the encounter. Battle replay ${record.id} recorded.`);
     addPvpLog(`${shipmentCargoShortLabel(shipment)} survived an NPC encounter on ${routeLabel(shipment.from, shipment.to)}.`);
     const clearance = applyRouteClearance(shipment.from, shipment.to, encounter, state.player);
     if (clearance) {
@@ -1635,7 +1801,7 @@ function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
         type: "success",
         shipmentId: shipment.id,
         text: `${shipmentCargoShortLabel(shipment)} survived a route encounter`,
-        detail: `${wave?.label || encounter?.label || "NPC raider"} failed on ${routeLabel(shipment.from, shipment.to)}. Convoy is still en route.`,
+        detail: `${wave?.label || encounter?.label || "NPC raider"} was disabled on ${routeLabel(shipment.from, shipment.to)}. Convoy is still en route with restored HP.`,
         at: Date.now(),
       };
       return true;
@@ -1643,61 +1809,23 @@ function resolveMerchantRoutejackBattle(shipment, patrol, options = {}) {
     return deliverShipment(shipment);
   }
 
-  if (battleRun.outcome === "destroyed") {
-    shipmentCargos(shipment).forEach((entry) => addItem(entry.name, entry.qty, shipment.from, true));
-    shipment.status = "raided";
-    shipment.resolvedAt = Date.now();
-    addItem(shipment.vehicle, 1, shipment.from, true);
-    if (shipment.escortVehicle) addItem(shipment.escortVehicle, 1, shipment.from, true);
-    addShipmentEvent(shipment, `${wave?.label || encounter?.label || "Route anomaly"} disabled the convoy. Cargo and vehicles were recovered at ${districtById(shipment.from).name}; no cargo was stolen.`);
-    addPvpLog(`${shipmentCargoShortLabel(shipment)} was forced back by ${wave?.label || encounter?.label || "a route anomaly"} on ${routeLabel(shipment.from, shipment.to)}.`);
-    state.dispatchNotice = {
-      type: "warning",
-      shipmentId: shipment.id,
-      text: `${shipmentCargoShortLabel(shipment)} was forced back`,
-      detail: `${wave?.label || encounter?.label || "Route anomaly"} disabled the convoy. Battle replay ${record.id} recorded.`,
-      at: Date.now(),
-    };
-    return false;
-  }
-
-  let kept = 0;
-  const returned = [];
+  const lostCargoUnits = shipmentCargoUnits(shipment);
   shipmentCargos(shipment).forEach((entry) => {
-    Array.from({ length: entry.qty }).forEach(() => {
-      const result = addLootToRun(patrol, entry.name);
-      if (result.kept) {
-        kept += 1;
-        if (result.replaced) {
-          addShipmentEvent(patrol, `Jettisoned ${result.replaced} to keep ${entry.name}.`);
-        }
-        recordStolenGood(entry.name, 1, shipment.from, shipment.to, patrol.ownerName || state.player, record.id, { interceptedVehicle: shipment.vehicle });
-      } else {
-        returned.push(entry.name);
-      }
-    });
+    recordStolenGood(entry.name, entry.qty, shipment.from, shipment.to, patrol.ownerName || "NPC raider", record.id, { interceptedVehicle: shipment.vehicle });
   });
-
-  if (!kept) {
-    addShipmentEvent(shipment, `NPC raider disabled the convoy but had no cargo room. Cargo continued. Battle replay ${record.id} recorded.`);
-    addShipmentEvent(patrol, `Won the encounter but had no room for ${shipmentCargoShortLabel(shipment)}.`);
-    return deliverShipment(shipment);
-  }
-
-  returned.forEach((itemName) => addItem(itemName, 1, shipment.from, true));
   shipment.status = "raided";
   shipment.resolvedAt = Date.now();
   addItem(shipment.vehicle, 1, shipment.from, true);
   if (shipment.escortVehicle) addItem(shipment.escortVehicle, 1, shipment.from, true);
-  addShipmentEvent(shipment, `NPC raider stole ${kept}/${shipmentCargoUnits(shipment)} cargo unit${kept === 1 ? "" : "s"}. Vehicle returned to ${districtById(shipment.from).name}.`);
-  addShipmentEvent(patrol, `Stole ${kept} cargo unit${kept === 1 ? "" : "s"} from ${shipment.vehicle}. Battle replay ${record.id} recorded.`);
-  addPvpLog(`${patrol.ownerName || "NPC raider"} stole ${kept} item${kept === 1 ? "" : "s"} on ${routeLabel(shipment.from, shipment.to)}.`);
-  addFeed(patrol.owner === "npc" ? "Route Watch" : state.player, patrol.owner === "npc" ? `lost ${kept} cargo` : `stole ${kept} cargo`, itemByName(shipmentPrimaryCargo(shipment)).iconName);
+  addShipmentEvent(shipment, `NPC raider disabled the convoy and took all ${lostCargoUnits} cargo unit${lostCargoUnits === 1 ? "" : "s"}. Vehicle returned to ${districtById(shipment.from).name}.`);
+  addShipmentEvent(patrol, `Disabled ${shipment.vehicle} and took ${shipmentCargoShortLabel(shipment)}. Battle replay ${record.id} recorded.`);
+  addPvpLog(`${patrol.ownerName || "NPC raider"} took ${lostCargoUnits} cargo unit${lostCargoUnits === 1 ? "" : "s"} on ${routeLabel(shipment.from, shipment.to)}.`);
+  addFeed("Route Watch", `lost ${lostCargoUnits} cargo`, itemByName(shipmentPrimaryCargo(shipment)).iconName);
   state.dispatchNotice = {
     type: "warning",
     shipmentId: shipment.id,
     text: `${shipmentCargoShortLabel(shipment)} was hit on route`,
-    detail: `${patrol.ownerName || "NPC raider"} stole ${kept} cargo unit${kept === 1 ? "" : "s"}. Battle replay ${record.id} recorded.`,
+    detail: `${patrol.ownerName || "NPC raider"} disabled the convoy and took all loaded cargo. Battle replay ${record.id} recorded.`,
     at: Date.now(),
   };
   return false;
@@ -1726,7 +1854,7 @@ function resolveMerchantTimedEncounter(shipment, encounterRoll) {
     status: "in-transit",
     events: [],
   };
-  addShipmentEvent(shipment, `${patrol.ownerName} found the convoy: ${encounter.label}${wave?.label && wave.label !== encounter.label ? ` / ${wave.label}` : ""}. Hourly route chance ${Math.round(encounterRoll.chance * 100)}%.`);
+  addShipmentEvent(shipment, `${patrol.ownerName} found the convoy: ${encounter.label}${wave?.label && wave.label !== encounter.label ? ` / ${wave.label}` : ""}. Segment ${encounterRoll.elapsedMiles?.toFixed(1) || "1.0"}mi roll: ${formatOdds(encounterRoll.chance * 100)}.`);
   addShipmentEvent(patrol, `Found ${shipment.vehicle} carrying ${shipmentCargoShortLabel(shipment)}.`);
   state.dispatchNotice = {
     type: "warning",
@@ -1976,11 +2104,61 @@ function battleRouteFor(settings = state.battleSim) {
   };
 }
 
+function battleEncounterRole(settings = state.battleSim) {
+  return settings?.encounterRole === "routejack" ? "routejack" : "merchant";
+}
+
+function battleEncounterRoleLabel(role = battleEncounterRole()) {
+  return role === "routejack" ? "Routejack Raid" : "Merchant Shipment";
+}
+
+function battleEncounterCatalogSource() {
+  return typeof state === "undefined"
+    ? normalizeRouteEncounterCatalog(defaultRouteEncounterCatalog)
+    : routeEncounterCatalog();
+}
+
+function battleEncounterMatchesRoute(encounter, route = battleRouteFor().route) {
+  return Boolean(encounter && route);
+}
+
+function battleEligibleEncounters(settings = state.battleSim, route = battleRouteFor(settings).route) {
+  const role = battleEncounterRole(settings);
+  const catalog = battleEncounterCatalogSource();
+  return catalog
+    .filter((entry) => entry.role === role)
+    .sort((a, b) => {
+      return Number(a.difficulty || 0) - Number(b.difficulty || 0);
+    });
+}
+
+function battleEncounterFor(settings = state.battleSim, route = battleRouteFor(settings).route) {
+  const encounters = battleEligibleEncounters(settings, route);
+  return encounters.find((entry) => entry.id === settings?.encounterId) || encounters[0] || null;
+}
+
+function battleEncounterWaveFor(settings = state.battleSim, encounter = battleEncounterFor(settings), options = {}) {
+  if (!encounter) return null;
+  const waves = Array.isArray(encounter.waves) && encounter.waves.length
+    ? encounter.waves
+    : normalizeRouteEncounterWaves(encounter, encounter);
+  const waveId = settings?.encounterWaveId || "random";
+  if (waveId !== "random") return waves.find((wave) => wave.id === waveId) || waves[0] || encounter;
+  return options.pickRandom ? pickEncounterWave(encounter) : waves[0] || encounter;
+}
+
 function normalizeBattleSettings(settings = {}) {
   const normalized = cloneBattleSettings(settings);
   const routeInfo = battleRouteFor(normalized);
   normalized.from = routeInfo.from;
   normalized.to = routeInfo.to;
+  normalized.encounterRole = battleEncounterRole(normalized);
+  const eligibleEncounters = battleEligibleEncounters(normalized, routeInfo.route);
+  const fallbackEncounter = eligibleEncounters[0] || null;
+  if (!eligibleEncounters.some((entry) => entry.id === normalized.encounterId)) normalized.encounterId = fallbackEncounter?.id || defaultBattleSim().encounterId;
+  const encounter = eligibleEncounters.find((entry) => entry.id === normalized.encounterId) || fallbackEncounter;
+  const waveIds = new Set(["random", ...(encounter?.waves || []).map((wave) => wave.id)]);
+  if (!waveIds.has(normalized.encounterWaveId)) normalized.encounterWaveId = "random";
   if (!allVehicleItems().some((item) => item.name === normalized.attackerVehicle)) normalized.attackerVehicle = defaultBattleSim().attackerVehicle;
   ["attackerSupport1", "attackerSupport2", "defenderEscort1", "defenderEscort2"].forEach((key) => {
     if (normalized[key] !== "none" && !allVehicleItems().some((item) => item.name === normalized[key])) normalized[key] = defaultBattleSim()[key] || "none";
@@ -1991,10 +2169,6 @@ function normalizeBattleSettings(settings = {}) {
   normalized.attackerRole = "routejack";
   normalized.defenderRole = "merchant";
   normalized.lootPolicy = ["first", "upgrade"].includes(normalized.lootPolicy) ? normalized.lootPolicy : "upgrade";
-  normalized.attackerTactic = Object.keys(battleAttackerTactics).includes(normalized.attackerTactic) ? normalized.attackerTactic : "snatch";
-  normalized.defenderTactic = Object.keys(battleDefenderTactics).includes(normalized.defenderTactic) ? normalized.defenderTactic : "protect";
-  normalized.failureMode = ["steal", "destroy"].includes(normalized.failureMode) ? normalized.failureMode : "steal";
-  normalized.maxTicks = Math.max(30, Math.min(500, Math.floor(Number(normalized.maxTicks || 120))));
   normalized.runs = Math.max(1, Math.min(5000, Math.floor(Number(normalized.runs || 250))));
   normalized.attackBonus = Math.max(-100, Math.min(100, Number(normalized.attackBonus || 0)));
   normalized.defenseBonus = Math.max(-100, Math.min(100, Number(normalized.defenseBonus || 0)));
@@ -2004,6 +2178,50 @@ function normalizeBattleSettings(settings = {}) {
   normalized.replaceDefenders = Boolean(normalized.replaceDefenders && normalized.defenderUnits.length);
   normalized.modules = normalizeBattleModules(normalized.modules);
   return normalized;
+}
+
+function battleSettingsForEncounter(settings = state.battleSim, route = battleRouteFor(settings).route, options = {}) {
+  const base = normalizeBattleSettings(settings);
+  const role = battleEncounterRole(base);
+  const encounter = options.encounter || battleEncounterFor(base, route);
+  const wave = options.wave || battleEncounterWaveFor(base, encounter, { pickRandom: options.pickRandom !== false });
+  if (!encounter || !wave) return base;
+  if (role === "merchant") {
+    const raiderVehicle = simulatedRouteVehicle(route, wave.attackerClasses || ["interceptor", "runner"], { maxRarityRank: rarityIndex(wave.rarityCeiling) });
+    const support1 = wave.supportChance && Math.random() < wave.supportChance
+      ? simulatedRouteVehicle(route, wave.attackerSupportClasses || ["runner"], { maxRarityRank: rarityIndex(wave.rarityCeiling) }).name
+      : "none";
+    return normalizeBattleSettings({
+      ...base,
+      encounterRole: "merchant",
+      encounterId: encounter.id,
+      attackerVehicle: raiderVehicle.name,
+      attackerSupport1: support1,
+      attackerSupport2: "none",
+      attackerUnits: wave.attackerUnits || [],
+      replaceAttackers: Boolean(wave.attackerUnits?.length),
+      defenderUnits: [],
+      replaceDefenders: false,
+      attackerRole: "routejack",
+      defenderRole: "merchant",
+      cargoUnits: Math.max(1, Math.min(battleCargoCapacity(base), Number(base.cargoUnits || wave.cargoUnits || 1))),
+    });
+  }
+  const target = simulatedRouteTarget(route, { encounter, wave });
+  return normalizeBattleSettings({
+    ...base,
+    encounterRole: "routejack",
+    encounterId: encounter.id,
+    defenderVehicle: target.vehicle.name,
+    defenderEscort1: target.escort?.name || "none",
+    defenderEscort2: "none",
+    defenderUnits: wave.defenderUnits || [],
+    replaceDefenders: Boolean(wave.defenderUnits?.length),
+    cargo: target.cargo.name,
+    cargoUnits: target.cargoUnits || wave.cargoUnits || 1,
+    attackerRole: "routejack",
+    defenderRole: "merchant",
+  });
 }
 
 function normalizeBattleBuilds(builds = {}) {
@@ -2047,8 +2265,9 @@ function battleCargoLabel(settings = state.battleSim) {
 }
 
 function battleRoleMatchupText(settings = state.battleSim) {
-  if (settings.failureMode === "destroy") return "Route threat vs convoy: the threat tries to disable the cargo vehicle before it escapes.";
-  return "Routejack vs NPC Merchant: the Routejack side tries to disable the cargo vehicle before it escapes.";
+  return battleEncounterRole(settings) === "merchant"
+    ? "Merchant Shipment vs NPC Raiders: both sides fight until one side is disabled. If merchants win, cargo continues; if raiders win, cargo is taken."
+    : "Routejack Raid vs NPC Cargo: both sides fight until one side is disabled. If routejacks win, they take the reward and continue.";
 }
 
 function routeBattleSettings({
@@ -2068,11 +2287,7 @@ function routeBattleSettings({
   cargoUnits = 1,
   attackerRole = "routejack",
   defenderRole = "merchant",
-  attackerTactic = "snatch",
-  defenderTactic = "protect",
   lootPolicy = "upgrade",
-  failureMode = "steal",
-  maxTicks = 120,
 } = {}) {
   return normalizeBattleSettings({
     ...defaultBattleSim(),
@@ -2092,11 +2307,7 @@ function routeBattleSettings({
     cargoUnits,
     attackerRole,
     defenderRole,
-    attackerTactic,
-    defenderTactic,
     lootPolicy,
-    failureMode,
-    maxTicks,
     runs: 1,
     attackBonus: 0,
     defenseBonus: 0,
@@ -2112,6 +2323,9 @@ function updateBattleSimFromControls() {
     ...state.battleSim,
     from: routeTo(from, to) ? from : state.battleSim.from,
     to: routeTo(from, to) ? to : state.battleSim.to,
+    encounterRole: document.querySelector("#battleEncounterRole")?.value || state.battleSim.encounterRole || "merchant",
+    encounterId: document.querySelector("#battleEncounterId")?.value || state.battleSim.encounterId,
+    encounterWaveId: document.querySelector("#battleEncounterWave")?.value || state.battleSim.encounterWaveId || "random",
     attackerVehicle: document.querySelector("#battleAttackerVehicle")?.value || state.battleSim.attackerVehicle,
     attackerSupport1: document.querySelector("#battleAttackerSupport1")?.value || state.battleSim.attackerSupport1 || "none",
     attackerSupport2: document.querySelector("#battleAttackerSupport2")?.value || state.battleSim.attackerSupport2 || "none",
@@ -2123,9 +2337,6 @@ function updateBattleSimFromControls() {
     attackerRole: document.querySelector("#battleAttackerRole")?.value || state.battleSim.attackerRole,
     defenderRole: document.querySelector("#battleDefenderRole")?.value || state.battleSim.defenderRole,
     lootPolicy: document.querySelector("#battleLootPolicy")?.value || state.battleSim.lootPolicy,
-    attackerTactic: document.querySelector("#battleAttackerTactic")?.value || state.battleSim.attackerTactic || "snatch",
-    defenderTactic: document.querySelector("#battleDefenderTactic")?.value || state.battleSim.defenderTactic || "protect",
-    maxTicks: Math.max(30, Math.min(500, Math.floor(Number(document.querySelector("#battleMaxTicks")?.value || state.battleSim.maxTicks || 120)))),
     runs: Math.max(1, Math.min(5000, Math.floor(Number(document.querySelector("#battleRuns")?.value || state.battleSim.runs)))),
     attackBonus: Math.max(-100, Math.min(100, Number(document.querySelector("#battleAttackBonus")?.value || 0))),
     defenseBonus: Math.max(-100, Math.min(100, Number(document.querySelector("#battleDefenseBonus")?.value || 0))),
@@ -2179,12 +2390,9 @@ function makeNpcBattleUnit(ref, side, fallbackRole = "support") {
     speed: unit.speed,
     impact: unit.impact,
     initiative: 0,
-    escape: 0,
     shield: 0,
     poison: 0,
     braveChance: role === "escort" ? unit.braveChance : 0,
-    escapeDrag: unit.escapeDrag || 0,
-    targetMode: unit.targetMode || "cargo",
     modules: [],
     npcUnit: unit,
   };
@@ -2222,12 +2430,9 @@ function makeBattleUnit(vehicleName, side, role, settings = {}, route = null, un
     speed: stats.speed,
     impact: stats.impact,
     initiative: 0,
-    escape: 0,
     shield: 0,
     poison: 0,
     braveChance: role === "escort" ? Math.min(65, Math.round(22 + rank * 7 + Number(vehicle.durability || 0))) : 0,
-    escapeDrag: 0,
-    targetMode: "cargo",
     modules: [],
     vehicle,
   };
@@ -2250,13 +2455,6 @@ function makeBattleTeams(settings, route = null) {
   const defenders = settings.replaceDefenders && customDefenders.length ? customDefenders : [...vehicleDefenders, ...customDefenders];
   if (defenders.length && !defenders.some((unit) => unit.role === "cargo")) defenders[0].role = "cargo";
   if (attackers.length && !attackers.some((unit) => unit.role === "raider")) attackers[0].role = "raider";
-  if (settings.defenderTactic === "evade") {
-    defenders.filter((unit) => unit.role === "cargo").forEach((unit) => {
-      unit.speed += 10;
-      unit.impact = Math.max(1, Math.round(unit.impact * 0.82));
-    });
-  }
-  if (settings.attackerTactic === "scramble") attackers.forEach((unit) => { unit.speed += 6; });
   return { attackers, defenders };
 }
 
@@ -2277,7 +2475,6 @@ function battleUnitStatus(unit) {
     `${Math.max(0, Math.round(unit.hp))}/${unit.maxHp} integrity`,
     `${Math.round(unit.initiative)}/100 initiative`,
   ];
-  if (unit.escape > 0) parts.push(`${Math.min(100, Math.round(unit.escape))}% escape`);
   return parts.join(" | ");
 }
 
@@ -2302,20 +2499,7 @@ function battleReadyText(ready) {
 function selectBattleTarget(actor, units, settings) {
   const enemies = liveUnits(units, actor.side === "attacker" ? "defender" : "attacker");
   if (!enemies.length) return null;
-  if (actor.targetMode === "highest-impact") return enemies.sort((a, b) => b.impact - a.impact || a.hp - b.hp)[0];
-  if (actor.targetMode === "weakest") return enemies.sort((a, b) => a.hp - b.hp || b.impact - a.impact)[0];
-  if (actor.side === "attacker") {
-    const cargo = enemies.find((unit) => unit.role === "cargo");
-    const escorts = enemies.filter((unit) => unit.role === "escort");
-    if (settings.attackerTactic === "disable" && escorts.length) return escorts.sort((a, b) => a.hp - b.hp || b.impact - a.impact)[0];
-    if (settings.attackerTactic === "scramble") return enemies.sort((a, b) => b.speed - a.speed || a.hp - b.hp)[0];
-    return cargo || enemies[0];
-  }
-  if (settings.defenderTactic === "counter") {
-    const raider = enemies.find((unit) => unit.role === "raider");
-    if (raider) return raider;
-  }
-  return enemies.sort((a, b) => b.impact - a.impact || a.hp - b.hp)[0];
+  return enemies.sort((a, b) => b.impact - a.impact || a.hp - b.hp || b.speed - a.speed)[0];
 }
 
 function tryBraveInterception(target, units, amount, log, tick) {
@@ -2328,7 +2512,7 @@ function tryBraveInterception(target, units, amount, log, tick) {
         tick,
         type: "brave",
         text: `${battleUnitLabel(escort)} intercepted the hit meant for ${battleUnitLabel(target)}.`,
-        detail: `Brave check succeeded: rolled ${Math.round(roll)} against ${escort.braveChance}%. The escort takes the attack so the cargo can keep building escape progress.`,
+        detail: `Brave check succeeded: rolled ${Math.round(roll)} against ${escort.braveChance}%. This is parked for future module tuning and is not used by the current HP-only battle layer.`,
       });
       return escort;
     }
@@ -2386,18 +2570,14 @@ function applyBattleAttackModules(actor, target, units, log, tick) {
 }
 
 function battleTargetReason(actor, target, actualTarget, settings) {
-  if (actor.side === "attacker" && settings.attackerTactic === "disable") return "Disable Escorts is selected, so attackers try to remove escorts before going after cargo.";
-  if (actor.side === "attacker" && settings.attackerTactic === "scramble") return "Target Fastest is selected, so attackers pressure the fastest opposing unit.";
-  if (actor.side === "attacker") return "Hit Cargo First is selected, so attackers focus the cargo vehicle when they can.";
-  if (settings.defenderTactic === "counter") return "Counter Lead is selected, so the defending party tries to disable the attacker lead.";
-  return "The defending party targets the highest-impact route threat.";
+  return "The acting unit targets the highest-impact route threat. Specialized targeting is reserved for future items or modules.";
 }
 
 function battleBasicAttack(actor, units, settings, log, tick) {
   const target = selectBattleTarget(actor, units, settings);
   if (!target) return;
-  const actualTarget = actor.side === "attacker" ? tryBraveInterception(target, units, actor.impact, log, tick) : target;
-  let damage = actor.side === "defender" && settings.defenderTactic === "evade" ? Math.round(actor.impact * 0.9) : actor.impact;
+  const actualTarget = target;
+  const damage = actor.impact;
   const result = applyBattleDamage(actualTarget, damage, actor, units, log, tick);
   log.push({
     tick,
@@ -2441,16 +2621,14 @@ function battleModuleSpecial(actor, units, settings, log, tick) {
     if (cargo.hp <= 0) log.push({ tick, type: "disabled", text: `${battleUnitLabel(cargo)} was disabled.` });
     return true;
   }
-  if (module.escapeBonus || module.shieldBonus) {
-    const gain = Math.round(22 + actor.speed * 0.28 + (settings.defenderTactic === "evade" ? 14 : 0) + Number(module.escapeBonus || 0));
+  if (module.shieldBonus) {
     const shield = Math.round(actor.impact * 0.55 + Number(module.shieldBonus || 0));
-    actor.escape += gain;
     actor.shield += shield;
     log.push({
       tick,
       type: "special",
-      text: `${battleUnitLabel(actor)} used ${module.label}: +${gain} escape, +${shield} shield.`,
-      detail: "Cargo escapes at 100%. Shield protects it while the route timer keeps moving.",
+      text: `${battleUnitLabel(actor)} used ${module.label}: +${shield} shield.`,
+      detail: "Emergency route-avoidance effects are future planning tools. Current battles resolve only by HP.",
     });
     return true;
   }
@@ -2464,7 +2642,7 @@ function battleModuleSpecial(actor, units, settings, log, tick) {
       tick,
       type: "special",
       text: `${battleUnitLabel(actor)} cast ${module.label}: enemies lost ${module.slowAll || 0} speed and ${module.initiativeDownAll || 0} initiative.`,
-      detail: "Lockdown effects delay enemy turns, buying time for cargo to escape or for attackers to finish a steal.",
+      detail: "Lockdown effects delay enemy turns and can become future item or module strategy.",
     });
     return true;
   }
@@ -2476,7 +2654,7 @@ function battleSpecial(actor, units, settings, log, tick) {
   if (actor.role === "raider") {
     const cargo = liveUnits(units, "defender").find((unit) => unit.role === "cargo") || selectBattleTarget(actor, units, settings);
     const actualTarget = tryBraveInterception(cargo, units, actor.impact, log, tick);
-    const damage = Math.round(actor.impact * (settings.attackerTactic === "snatch" ? 1.8 : 1.45));
+    const damage = Math.round(actor.impact * 1.45);
     const result = applyBattleDamage(actualTarget, damage, actor, units, log, tick);
     log.push({
       tick,
@@ -2503,14 +2681,12 @@ function battleSpecial(actor, units, settings, log, tick) {
     return;
   }
   if (actor.role === "cargo") {
-    const gain = Math.round(22 + actor.speed * 0.28 + (settings.defenderTactic === "evade" ? 14 : 0));
-    actor.escape += gain;
     actor.shield += Math.round(actor.impact * 0.55);
     log.push({
       tick,
       type: "special",
-      text: `${battleUnitLabel(actor)} used Evasive Burn: +${gain} escape, +${Math.round(actor.impact * 0.55)} shield.`,
-      detail: "Cargo is not trying to win a duel. It wins by reaching 100% escape or surviving the route timer.",
+      text: `${battleUnitLabel(actor)} braced for impact and gained +${Math.round(actor.impact * 0.55)} shield.`,
+      detail: "Current battles resolve by one side reaching 0 HP. Cargo vehicles can still brace because survival is their job.",
     });
     return;
   }
@@ -2540,24 +2716,9 @@ function applyBattlePoison(actor, log, tick) {
   if (actor.hp <= 0) log.push({ tick, type: "disabled", text: `${battleUnitLabel(actor)} was disabled.` });
 }
 
-function battleCargoEscapeAction(actor, units, settings, log, tick) {
-  const loadPenalty = Math.max(0, battleCargoUnits(settings) - 1) * 2;
-  const tacticBonus = settings.defenderTactic === "evade" ? 8 : 0;
-  const dragPenalty = liveUnits(units, "attacker").reduce((sum, unit) => sum + Number(unit.escapeDrag || 0), 0);
-  const gain = Math.max(3, Math.round(8 + actor.speed * 0.3 + tacticBonus - loadPenalty - dragPenalty));
-  actor.escape += gain;
-  log.push({
-    tick,
-    type: "escape",
-    text: `${battleUnitLabel(actor)} pushed for the exit and gained ${gain}% escape progress.`,
-    detail: `Cargo escape is the defender's timer. At 100%, the shipment gets away with ${battleCargoLabel(settings)}.${dragPenalty ? ` Route pressure reduced this escape push by ${dragPenalty}.` : ""}`,
-  });
-}
-
 function battleAct(actor, units, settings, log, tick) {
   if (actor.hp <= 0) return;
-  if (actor.role === "cargo") battleCargoEscapeAction(actor, units, settings, log, tick);
-  else battleBasicAttack(actor, units, settings, log, tick);
+  battleBasicAttack(actor, units, settings, log, tick);
 }
 
 function applyBattleStartModules(units, settings, log) {
@@ -2604,17 +2765,17 @@ function applyBattleStartModules(units, settings, log) {
 function simulateAutoBattleRun(settings, route) {
   const { attackers, defenders } = makeBattleTeams(settings, route);
   const units = [...attackers, ...defenders];
-  const cargo = defenders.find((unit) => unit.role === "cargo");
   const log = [{
     tick: 0,
     type: "start",
     text: `${roles[settings.attackerRole]?.label || "Attacker"} party engaged ${roles[settings.defenderRole]?.label || "Defender"} party: ${battleRoleMatchupText(settings)}`,
-    detail: "Fundamental combat layer: each tick adds Speed to initiative. A vehicle acts at 100 initiative, then spends 100. Cargo vehicles use their turn to build escape progress; other vehicles attack.",
+    detail: "Fundamental combat layer: each tick adds Speed to initiative. A vehicle acts at 100 initiative, then spends 100. Battles continue until one side has no active vehicles.",
     status: battleStatusSnapshot(units),
   }];
-  let outcome = "timeout";
+  let outcome = "defended";
   let tick = 0;
-  while (tick < settings.maxTicks) {
+  const safetyTickLimit = 10000;
+  while (liveUnits(units, "attacker").length && liveUnits(units, "defender").length && tick < safetyTickLimit) {
     tick += 1;
     liveUnits(units).forEach((unit) => { unit.initiative += unit.speed; });
     const ready = liveUnits(units).filter((unit) => unit.initiative >= 100).sort((a, b) => b.initiative - a.initiative || b.speed - a.speed);
@@ -2635,58 +2796,53 @@ function simulateAutoBattleRun(settings, route) {
         tick,
         type: "status",
         text: `Status after ${battleUnitLabel(actor)} acted.`,
-        detail: "Integrity 0 disables a vehicle. Cargo wins at 100% escape; attackers win if cargo integrity reaches 0.",
+        detail: "Integrity 0 disables a vehicle. The encounter ends when one side has no active vehicles.",
         status: battleStatusSnapshot(units),
       });
-      if (!cargo || cargo.hp <= 0) {
+      if (!liveUnits(units, "defender").length) {
         outcome = "stolen";
-        log.push({ tick, type: "outcome", text: `${battleCargoLabel(settings)} was taken after the cargo vehicle was disabled.`, status: battleStatusSnapshot(units) });
-        return { outcome, tick, units, log, cargoHp: 0, cargoEscape: cargo?.escape || 0 };
-      }
-      if (cargo.escape >= 100) {
-        outcome = "escaped";
-        log.push({ tick, type: "outcome", text: `${battleUnitLabel(cargo)} escaped the route with ${battleCargoLabel(settings)}.`, status: battleStatusSnapshot(units) });
-        return { outcome, tick, units, log, cargoHp: cargo.hp, cargoEscape: cargo.escape };
+        log.push({ tick, type: "outcome", text: `The attacking party disabled every defender and claimed ${battleCargoLabel(settings)}.`, status: battleStatusSnapshot(units) });
+        return { outcome, tick, units, log, cargoHp: 0 };
       }
       if (!liveUnits(units, "attacker").length) {
         outcome = "defended";
+        const cargo = defenders.find((unit) => unit.role === "cargo");
         log.push({ tick, type: "outcome", text: `The defending party disabled every attacker and kept ${battleCargoLabel(settings)}.`, status: battleStatusSnapshot(units) });
-        return { outcome, tick, units, log, cargoHp: cargo.hp, cargoEscape: cargo.escape };
+        return { outcome, tick, units, log, cargoHp: cargo?.hp || 0 };
       }
     }
   }
-  const finalCargo = cargo || { hp: 0, escape: 0 };
-  outcome = finalCargo.hp > 0 ? "defended" : "stolen";
+  const attackerHp = liveUnits(units, "attacker").reduce((sum, unit) => sum + Math.max(0, unit.hp), 0);
+  const defenderHp = liveUnits(units, "defender").reduce((sum, unit) => sum + Math.max(0, unit.hp), 0);
+  outcome = defenderHp > attackerHp ? "defended" : "stolen";
   log.push({
     tick,
     type: "outcome",
-    text: outcome === "stolen" ? `${battleCargoLabel(settings)} was taken at the route limit.` : `The defending party survived the route timer with ${battleCargoLabel(settings)}.`,
+    text: outcome === "stolen"
+      ? `Safety stop: attackers had more remaining integrity and claimed ${battleCargoLabel(settings)}.`
+      : `Safety stop: defenders had more remaining integrity and kept ${battleCargoLabel(settings)}.`,
     status: battleStatusSnapshot(units),
   });
-  return { outcome, tick, units, log, cargoHp: finalCargo.hp, cargoEscape: finalCargo.escape };
+  return { outcome, tick, units, log, cargoHp: defenders.find((unit) => unit.role === "cargo")?.hp || 0 };
 }
 
 function battleOutcomeLabel(outcome) {
   return {
     stolen: "Cargo Taken",
-    destroyed: "Convoy Disabled",
     defended: "Cargo Defended",
-    escaped: "Cargo Escaped",
-    timeout: "Timed Out",
   }[outcome] || outcome;
 }
 
 function summarizeBattleRuns(settings, routeInfo, route, runResults) {
-  const outcomeCounts = { stolen: 0, destroyed: 0, defended: 0, escaped: 0, timeout: 0 };
+  const encounter = battleEncounterFor(settings, route);
+  const outcomeCounts = { stolen: 0, defended: 0 };
   const unitSurvival = {};
   let totalTicks = 0;
   let totalCargoHp = 0;
-  let totalCargoEscape = 0;
   runResults.forEach((run) => {
     outcomeCounts[run.outcome] = (outcomeCounts[run.outcome] || 0) + 1;
     totalTicks += run.tick;
     totalCargoHp += Math.max(0, run.cargoHp || 0);
-    totalCargoEscape += Math.min(100, Math.max(0, run.cargoEscape || 0));
     run.units.forEach((unit) => {
       const key = `${unit.side}-${unit.role}-${unit.name}`;
       if (!unitSurvival[key]) unitSurvival[key] = { label: unit.name, alive: 0, total: 0, side: unit.side, role: unit.role, rarity: unit.rarity, iconName: unit.iconName };
@@ -2701,17 +2857,16 @@ function summarizeBattleRuns(settings, routeInfo, route, runResults) {
     route: routeInfo.label,
     routeKind: routeKind(route),
     routeMiles: routeDistance(route),
+    scenario: battleEncounterRoleLabel(settings.encounterRole),
+    encounter: encounter?.label || "Designed Encounter",
     cargo: battleCargoLabel(settings),
     cargoUnits: battleCargoUnits(settings),
     runs: settings.runs,
-    maxTicks: settings.maxTicks,
     outcomeCounts,
-    stealRate: (outcomeCounts.stolen + outcomeCounts.destroyed) / settings.runs,
-    defendRate: (outcomeCounts.defended + outcomeCounts.escaped) / settings.runs,
-    escapeRate: outcomeCounts.escaped / settings.runs,
+    stealRate: outcomeCounts.stolen / settings.runs,
+    defendRate: outcomeCounts.defended / settings.runs,
     averageTicks: totalTicks / settings.runs,
     averageCargoHp: totalCargoHp / settings.runs,
-    averageCargoEscape: totalCargoEscape / settings.runs,
     unitSurvival,
     sample,
     settings,
@@ -2720,21 +2875,23 @@ function summarizeBattleRuns(settings, routeInfo, route, runResults) {
 
 function runBattleSimulation(runs) {
   updateBattleSimFromControls();
-  const settings = normalizeBattleSettings({ ...state.battleSim, runs });
-  settings.runs = Math.max(1, Math.min(5000, Math.floor(Number(settings.runs || 1))));
-  state.battleSim = cloneBattleSettings(settings);
+  const baseSettings = normalizeBattleSettings({ ...state.battleSim, runs });
   const routeInfo = selectedBattleRoute();
   const route = routeInfo.route;
-  const runResults = Array.from({ length: settings.runs }, () => simulateAutoBattleRun(settings, route));
+  const settings = battleSettingsForEncounter(baseSettings, route, { pickRandom: false });
+  settings.runs = Math.max(1, Math.min(5000, Math.floor(Number(settings.runs || 1))));
+  state.battleSim = cloneBattleSettings(baseSettings);
+  const runResults = Array.from({ length: settings.runs }, () => simulateAutoBattleRun(battleSettingsForEncounter(baseSettings, route, { pickRandom: true }), route));
   state.battleSimResult = summarizeBattleRuns(settings, routeInfo, route, runResults);
 }
 
 function startLiveBattleReplay() {
   updateBattleSimFromControls();
-  const settings = normalizeBattleSettings({ ...state.battleSim, runs: 1 });
-  settings.runs = 1;
-  state.battleSim = cloneBattleSettings(settings);
+  const baseSettings = normalizeBattleSettings({ ...state.battleSim, runs: 1 });
   const routeInfo = selectedBattleRoute();
+  const settings = battleSettingsForEncounter(baseSettings, routeInfo.route, { pickRandom: true });
+  settings.runs = 1;
+  state.battleSim = cloneBattleSettings(baseSettings);
   const run = simulateAutoBattleRun(settings, routeInfo.route);
   state.battleSimResult = summarizeBattleRuns(settings, routeInfo, routeInfo.route, [run]);
   state.battleReplay = {
@@ -2923,14 +3080,16 @@ function viewRouteBattle(id) {
 function battleBuildSummary(build) {
   const settings = normalizeBattleSettings(build?.settings || defaultBattleSim());
   const routeInfo = battleRouteFor(settings);
+  const encounter = battleEncounterFor(settings, routeInfo.route);
   const attackerUnits = [settings.attackerVehicle, settings.attackerSupport1, settings.attackerSupport2].filter((name) => name && name !== "none");
   const defenderUnits = [settings.defenderVehicle, settings.defenderEscort1, settings.defenderEscort2].filter((name) => name && name !== "none");
   return {
     route: routeInfo.label,
+    encounter: encounter?.label || "No encounter",
+    role: battleEncounterRoleLabel(settings.encounterRole),
     cargo: battleCargoLabel(settings),
     attackers: attackerUnits.join(", "),
     defenders: defenderUnits.join(", "),
-    tactics: `${battleAttackerTactics[settings.attackerTactic]} vs ${battleDefenderTactics[settings.defenderTactic]}`,
   };
 }
 
@@ -2952,9 +3111,11 @@ function runBattleBuildComparison() {
   const runs = Math.max(1, Math.min(5000, Math.floor(Number(document.querySelector("#battleRuns")?.value || state.battleSim?.runs || 250))));
   const results = ["a", "b"].map((slot) => {
     const build = state.battleBuilds[slot];
-    const settings = normalizeBattleSettings({ ...build.settings, runs });
-    const routeInfo = battleRouteFor(settings);
-    const runResults = Array.from({ length: runs }, () => simulateAutoBattleRun(settings, routeInfo.route));
+    const baseSettings = normalizeBattleSettings({ ...build.settings, runs });
+    const routeInfo = battleRouteFor(baseSettings);
+    const settings = battleSettingsForEncounter(baseSettings, routeInfo.route, { pickRandom: false });
+    settings.runs = runs;
+    const runResults = Array.from({ length: runs }, () => simulateAutoBattleRun(battleSettingsForEncounter(baseSettings, routeInfo.route, { pickRandom: true }), routeInfo.route));
     return {
       slot,
       name: build.name,
@@ -2992,8 +3153,6 @@ function resolveRoutejackNpcEncounter(run, encounterRoll) {
     cargoUnits: target.cargoUnits || 1,
     attackerRole: "routejack",
     defenderRole: "merchant",
-    attackerTactic: run.tactic || "snatch",
-    defenderTactic: target.escort ? "protect" : "evade",
     lootPolicy: run.lootPolicy || "upgrade",
   });
   const battleRun = simulateAutoBattleRun(settings, route);
@@ -3096,9 +3255,12 @@ function processRouteEncounterTick(shipment, now = Date.now()) {
   const endAt = Math.min(now, shipment.arrivesAt);
   let cursor = Math.min(shipment.lastEncounterCheckAt, endAt);
   let changed = false;
+  const routeMiles = Math.max(1, routeDistance(route));
+  const travelMs = Math.max(60000, Number(shipment.arrivesAt || 0) - Number(shipment.startedAt || 0));
+  const checkIntervalMs = Math.max(1000, travelMs / routeMiles);
 
   while (cursor < endAt && shipment.status === "in-transit") {
-    const nextCursor = Math.min(endAt, cursor + 3600000);
+    const nextCursor = Math.min(endAt, cursor + checkIntervalMs);
     const elapsedMs = Math.max(0, nextCursor - cursor);
     shipment.lastEncounterCheckAt = nextCursor;
     cursor = nextCursor;
@@ -3176,7 +3338,7 @@ function createShipment(cargoLoad, vehicleName, destinationId, escortName = "non
   const travelHours = routeTravelHours(route, vehicle, currentRole().shipmentSpeedBonus || 0);
   const travelMs = Math.max(60000, travelHours * 3600000);
   const now = Date.now();
-  state.nextShipmentRiskReduction = 0;
+  const riskReduction = Math.max(0, Math.min(0.85, Number(state.nextShipmentRiskReduction || 0) + Number(currentRole().riskReduction || 0)));
   const shipment = {
     id: nextMarketId("ship"),
     from: cityId,
@@ -3189,8 +3351,10 @@ function createShipment(cargoLoad, vehicleName, destinationId, escortName = "non
     escortVehicle: escort?.name || null,
     routeHours: travelHours,
     routeMiles: routeDistance(route),
+    riskReduction,
     encounterChance: null,
-    encounterRatePerHour: null,
+    encounterRatePerMile: null,
+    encounterExpected: null,
     riskChance: null,
     profession: state.role,
     riskChecked: false,
@@ -3200,8 +3364,11 @@ function createShipment(cargoLoad, vehicleName, destinationId, escortName = "non
     arrivesAt: now + travelMs,
     status: "in-transit",
   };
-  shipment.encounterRatePerHour = routeEncounterRatePerHour(shipment, route);
-  shipment.encounterChance = routeEncounterHourlyChance(shipment, route);
+  state.nextShipmentRiskReduction = 0;
+  const encounterSummary = routeEncounterFullRouteSummary(shipment, route);
+  shipment.encounterRatePerMile = encounterSummary.ratePerMile;
+  shipment.encounterExpected = encounterSummary.expected;
+  shipment.encounterChance = Math.round(encounterSummary.chance * 1000) / 10;
   state.shipments.unshift(shipment);
   state.shipmentCargoLoad = {};
   state.shipmentCargoLoadTouched = false;
@@ -3210,7 +3377,7 @@ function createShipment(cargoLoad, vehicleName, destinationId, escortName = "non
     type: "success",
     shipmentId: shipment.id,
     text: `${shipmentCargoShortLabel(shipment)} launched toward ${districtById(destinationId).name}`,
-    detail: `${vehicle.name}${escort ? ` + ${escort.name}` : ""} - arrives about ${new Date(shipment.arrivesAt).toLocaleTimeString()} (${formatRouteTime(travelHours)}). Encounter ${shipment.encounterChance}%/hr.`,
+    detail: `${vehicle.name}${escort ? ` + ${escort.name}` : ""} - arrives about ${new Date(shipment.arrivesAt).toLocaleTimeString()} (${formatRouteTime(travelHours)}). ${shipment.encounterExpected.toFixed(1)} expected encounters, ${formatOdds(shipment.encounterChance)} route chance.`,
     at: Date.now(),
   };
   trackContract("shipmentsSent", 1);
@@ -3241,7 +3408,17 @@ function attemptIntercept() {
   const travelHours = routeTravelHours(route, vehicle);
   const travelMs = Math.max(60000, travelHours * 3600000);
   const capacity = convoyNames.reduce((sum, name) => sum + Math.max(1, Number(itemByName(name).capacity || 1)), 0);
-  const encounterLimit = Math.max(1, Math.min(4, Math.max(capacity, Math.round(travelHours * 1.35))));
+  const routePreview = {
+    kind: "intercept",
+    from: state.district,
+    to: route.to,
+    vehicle: vehicle.name,
+    support1: support1Name,
+    support2: support2Name,
+    capacity,
+  };
+  const expectedEncounters = routeEncounterFullRouteSummary(routePreview, route).expected;
+  const encounterLimit = Math.max(1, Math.min(12, Math.max(capacity, Math.ceil(expectedEncounters))));
   const now = Date.now();
   const run = {
     id: nextMarketId("intercept"),
@@ -3253,7 +3430,6 @@ function attemptIntercept() {
     support2: support2Name,
     loot: [],
     lootPolicy: state.pvpLootPolicy,
-    tactic: state.routejackTactic || "snatch",
     capacity,
     encounterLimit,
     routeHours: travelHours,
@@ -3265,8 +3441,10 @@ function attemptIntercept() {
     arrivesAt: now + travelMs,
     status: "in-transit",
   };
-  run.encounterRatePerHour = routeEncounterRatePerHour(run, route);
-  run.encounterChance = routeEncounterHourlyChance(run, route);
+  const encounterSummary = routeEncounterFullRouteSummary(run, route);
+  run.encounterRatePerMile = encounterSummary.ratePerMile;
+  run.encounterExpected = encounterSummary.expected;
+  run.encounterChance = Math.round(encounterSummary.chance * 1000) / 10;
   state.shipments.unshift(run);
   addPvpLog(`Launched ${convoyNames.join(" + ")} to raid ${districtById(state.district).name} to ${districtById(route.to).name}.`);
   addFeed(state.player, `routejack raid`, vehicle.iconName);

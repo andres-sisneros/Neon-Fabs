@@ -1,5 +1,7 @@
 # Neon Fabs Lore Bible
 
+Authoring note: the active writing workspace is now `design/`. Use `design/lore-bible.md`, `design/naming-workbench.md`, and `design/art-direction.md` for new drafts, then promote player-facing names/flavor into `content/creative-overrides.js`.
+
 ## Tone
 
 Neon Fabs is about contract drifters, civic matter, sleeper crews, and machine-made scarcity. The world should feel cyberpunk, but not only chrome and violence: public assemblers, route debt, soft borders, and fragile communities should matter.

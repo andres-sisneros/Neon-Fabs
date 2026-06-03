@@ -21,7 +21,7 @@
       return [
         { id: "route", label: "Route" },
         { id: "vehicle", label: "Convoy" },
-        { id: "tactic", label: "Tactic" },
+        { id: "loot", label: "Loot" },
         { id: "confirm", label: "Launch" },
       ];
     }
@@ -158,8 +158,6 @@
         cargoUnits: Math.max(1, loadedUnits || 1),
         attackerRole: "routejack",
         defenderRole: "merchant",
-        attackerTactic: "snatch",
-        defenderTactic: selectedEscort ? "protect" : "evade",
       })
       : null;
     const defenders = battleSettings ? makeBattleTeams(battleSettings, selectedRoute).defenders : [];
@@ -174,7 +172,7 @@
       escortVehicle: selectedEscort?.name || null,
       profession: "merchant",
     } : null;
-    const encounterPreview = previewShipment ? routeEncounterHourlyChance(previewShipment, selectedRoute) : null;
+    const encounterPreview = previewShipment ? routeEncounterFullRouteSummary(previewShipment, selectedRoute) : null;
     const canShipSelected = canShipByRole && loadedUnits > 0 && loadedUnits <= selectedVehicleCapacity && routeVehicles.length && destinationOptions && selectedVehicle?.category === "vehicle" && vehicleCanUseRoute(selectedVehicle, selectedRoute);
     const step = currentDispatchStep();
     const stepComplete = {
@@ -214,7 +212,7 @@
           <div class="side-metric"><span>Cargo</span><strong>${loadedUnits ? `${loadedUnits}/${selectedVehicleCapacity} slots` : "None"}</strong></div>
           <div class="side-metric"><span>Freight Pay</span><strong>${freightEstimate ? formatCredits(freightEstimate) : "No cargo"}</strong></div>
           <div class="side-metric"><span>Profile</span><strong>${selectedVehicle?.category === "vehicle" ? `${profileBand(vehicleProfileScore(selectedVehicle))} (${vehicleProfileScore(selectedVehicle)})` : "No vehicle"}</strong></div>
-          <div class="side-metric"><span>Encounter</span><strong>${encounterPreview !== null ? `${encounterPreview}%/hr` : "Unknown"}</strong></div>
+          <div class="side-metric"><span>Encounter</span><strong>${encounterPreview ? `${encounterPreview.expected.toFixed(1)} exp, ${formatOdds(encounterPreview.chance * 100)}` : "Unknown"}</strong></div>
         </div>
         <div class="battle-convoy-preview compact">
           <div class="card-row"><strong>Convoy Readiness</strong><span class="pill">${selectedVehicle?.name || "No vehicle"}</span></div>
@@ -261,7 +259,7 @@
       lootPolicy: state.pvpLootPolicy,
       capacity: patrolCapacity,
     } : null;
-    const encounterEstimate = routejackPreview ? routeEncounterHourlyChance(routejackPreview, selectedRoute) : null;
+    const encounterEstimate = routejackPreview ? routeEncounterFullRouteSummary(routejackPreview, selectedRoute) : null;
     const canLaunch = routes.length && availableVehicles.length && selectedVehicle?.category === "vehicle";
     const step = currentDispatchStep();
     const convoySupport = `<div class="dispatch-builder-section subtle">
@@ -269,27 +267,18 @@
       <div class="dispatch-choice-grid vehicle-choice-grid">${dispatchNoneCard(state.pvpSupport1 === "none", "data-raid-support-1", "No Support 1")}${dispatchVehicleCards(supportEntries(state.pvpSupport1, [state.pvpVehicle]), state.pvpSupport1, "data-raid-support-1", "No support vehicles").replace(/^<div class="dispatch-choice-grid vehicle-choice-grid">|<\/div>$/g, "")}</div>
       <div class="dispatch-choice-grid vehicle-choice-grid">${dispatchNoneCard(state.pvpSupport2 === "none", "data-raid-support-2", "No Support 2")}${dispatchVehicleCards(supportEntries(state.pvpSupport2, [state.pvpVehicle, state.pvpSupport1]), state.pvpSupport2, "data-raid-support-2", "No support vehicles").replace(/^<div class="dispatch-choice-grid vehicle-choice-grid">|<\/div>$/g, "")}</div>
     </div>`;
-    const tacticChoices = `<div class="dispatch-choice-grid tactic-choice-grid">${Object.entries(battleAttackerTactics).map(([id, label]) => dispatchChoiceCard({
-      active: state.routejackTactic === id,
-      attr: `data-routejack-tactic-choice="${id}"`,
-      title: label,
-      meta: id === "disable" ? "Safer vs escorts" : id === "scramble" ? "Press speed" : "Fastest steal",
-      detail: id === "snatch" ? "Focus cargo first" : id === "disable" ? "Clear protection before cargo" : "Target fast units",
-      iconName: id === "snatch" ? "chip" : id === "disable" ? "tool" : "data",
-      rarity: id === "disable" ? "gold" : id === "scramble" ? "blue" : "green",
-    })).join("")}</div>`;
-    const lootChoices = `<div class="dispatch-choice-grid tactic-choice-grid">${dispatchChoiceCard({ active: state.pvpLootPolicy === "upgrade", attr: 'data-loot-policy-choice="upgrade"', title: "Upgrade Loot", meta: "Replace weak finds", detail: "Dump lower rarity cargo for better cargo", iconName: "lens", rarity: "blue" })}${dispatchChoiceCard({ active: state.pvpLootPolicy === "first", attr: 'data-loot-policy-choice="first"', title: "Fill Hold", meta: "Keep first haul", detail: "Stop swapping once cargo is loaded", iconName: "poly", rarity: "green" })}</div>`;
+    const lootChoices = `<div class="dispatch-choice-grid loot-choice-grid">${dispatchChoiceCard({ active: state.pvpLootPolicy === "upgrade", attr: 'data-loot-policy-choice="upgrade"', title: "Upgrade Loot", meta: "Replace weak finds", detail: "Dump lower rarity cargo for better cargo", iconName: "lens", rarity: "blue" })}${dispatchChoiceCard({ active: state.pvpLootPolicy === "first", attr: 'data-loot-policy-choice="first"', title: "Fill Hold", meta: "Keep first haul", detail: "Stop swapping once cargo is loaded", iconName: "poly", rarity: "green" })}</div>`;
     const stepComplete = {
       route: Boolean(selectedRoute),
       vehicle: Boolean(selectedVehicle?.category === "vehicle" && vehicleCanUseRoute(selectedVehicle, selectedRoute)),
-      tactic: Boolean(state.routejackTactic && state.pvpLootPolicy),
+      loot: Boolean(state.pvpLootPolicy),
       confirm: canLaunch,
     };
     const stepBody = {
       route: `<section class="dispatch-wizard-step">${renderRoutePixelScene(selectedRoute, { compact: false })}<div class="card-row"><h3>Choose Raid Route</h3><span class="pill">${currentDistrict().name}</span></div>${dispatchRouteCards(routes, state.pvpRoute, "data-raid-route", selectedVehicle)}</section>`,
       vehicle: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Choose Convoy</h3><span class="pill">${patrolCapacity} loot slots</span></div>${dispatchVehicleCards(availableVehicles, state.pvpVehicle, "data-raid-vehicle", "No compatible raid vehicles")}${convoySupport}</section>`,
-      tactic: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Set Raid Plan</h3><span class="pill">${battleAttackerTactics[state.routejackTactic] || "Hit Cargo First"}</span></div>${tacticChoices}<div class="dispatch-builder-section subtle"><div class="card-row"><h3>Loot Hold</h3><span class="pill">${patrolCapacity} slots</span></div>${lootChoices}</div></section>`,
-      confirm: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Ready To Launch</h3><span class="pill">${selectedRoute ? `${routeDistance(selectedRoute)}mi ${routeKind(selectedRoute)}` : "No route"}</span></div><div class="dispatch-summary-strip"><div class="side-metric"><span>Route</span><strong>${selectedRoute ? `${currentDistrict().name} -> ${districtById(selectedRoute.to).name}` : "No route"}</strong></div><div class="side-metric"><span>Raid Time</span><strong>${patrolHours ? formatRouteTime(patrolHours) : "No route"}</strong></div><div class="side-metric"><span>Convoy</span><strong>${[selectedVehicle?.name, state.pvpSupport1, state.pvpSupport2].filter((name) => name && name !== "none").join(" + ") || "No vehicles"}</strong></div><div class="side-metric"><span>Capacity</span><strong>${patrolCapacity || "Need vehicle"}</strong></div><div class="side-metric"><span>Targets</span><strong>${encounterEstimate !== null ? `${encounterEstimate}%/hr` : "Need route"}</strong></div><div class="side-metric"><span>Sensor</span><strong>${selectedVehicle?.category === "vehicle" ? vehicleSensorScore(selectedVehicle) : "No vehicle"}</strong></div></div></section>`,
+      loot: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Loot Hold</h3><span class="pill">${patrolCapacity} slots</span></div><p class="muted">Routejack convoys fight until one side is disabled. If you win, this decides how your hold handles stolen cargo.</p>${lootChoices}</section>`,
+      confirm: `<section class="dispatch-wizard-step"><div class="card-row"><h3>Ready To Launch</h3><span class="pill">${selectedRoute ? `${routeDistance(selectedRoute)}mi ${routeKind(selectedRoute)}` : "No route"}</span></div><div class="dispatch-summary-strip"><div class="side-metric"><span>Route</span><strong>${selectedRoute ? `${currentDistrict().name} -> ${districtById(selectedRoute.to).name}` : "No route"}</strong></div><div class="side-metric"><span>Raid Time</span><strong>${patrolHours ? formatRouteTime(patrolHours) : "No route"}</strong></div><div class="side-metric"><span>Convoy</span><strong>${[selectedVehicle?.name, state.pvpSupport1, state.pvpSupport2].filter((name) => name && name !== "none").join(" + ") || "No vehicles"}</strong></div><div class="side-metric"><span>Capacity</span><strong>${patrolCapacity || "Need vehicle"}</strong></div><div class="side-metric"><span>Targets</span><strong>${encounterEstimate ? `${encounterEstimate.expected.toFixed(1)} exp, ${formatOdds(encounterEstimate.chance * 100)}` : "Need route"}</strong></div><div class="side-metric"><span>Sensor</span><strong>${selectedVehicle?.category === "vehicle" ? vehicleSensorScore(selectedVehicle) : "No vehicle"}</strong></div></div></section>`,
     }[step];
     return `<div class="shipment-form dispatch-wizard routejack-builder">${dispatchWizardStepper(stepComplete[step])}${stepBody}${dispatchWizardControls({ canAdvance: stepComplete[step], canLaunch, launchAction: "attempt-intercept" })}</div>`;
   };

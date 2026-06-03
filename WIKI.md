@@ -2,7 +2,7 @@
 
 This is the living rules page for the local prototype. It is intentionally practical: what the player can do, what each system means, and what is still a design sandbox.
 
-The prototype currently uses session state only. Refreshing the browser or pressing New Test starts from a clean profile, and old browser saves are intentionally ignored until the project reaches a release version.
+The prototype now uses browser-local playtest saves. Refreshing keeps the current profile in that browser, while pressing New Test starts from a clean profile. Old incompatible browser saves are still intentionally ignored until the project reaches a release version.
 
 ## Interface Direction
 
@@ -28,9 +28,9 @@ The current prototype is intentionally still a static browser app, but the direc
 - Systems: fab production, inventory, market orders, melds, dispatch, combat, and contracts.
 - UI: screen rendering, action sheets, confirmation panels, navigation, and replay views.
 - Admin: test grants, time advance, balancing tools, and simulation tools.
-- Persistence: currently session reset; later accounts and server-authoritative state.
+- Persistence: browser-local playtest save for static testing; later accounts and server-authoritative state.
 
-Content and default prototype definitions now live in `game-content.js`. Runtime systems and game actions live in `game-systems.js`. Rendering, browser event handling, and UI orchestration remain in `app.js` while the prototype is being stabilized.
+Content and default prototype definitions now live in `game-content.js`. Runtime systems and game actions live in `game-systems.js`. Rendering, browser event handling, and UI orchestration remain in `app.js` while the prototype is being stabilized. Author-facing lore and naming notes live in `design/`, and safe display overrides live in `content/creative-overrides.js`.
 
 Common UI buttons now route through `runAction(action, payload)` before touching state. This keeps navigation, Print Bay collection, item detail, district switching, contracts, category filters, and common market or inventory verbs closer to the game systems. Admin tools and the route battle sandbox still use direct handlers because they are balance and debugging surfaces.
 
@@ -204,7 +204,7 @@ Each cargo item unit uses one cargo slot. A Common Freighter currently has 6 car
 
 NPCs on routes are not live visible traffic. They are random route encounters, closer to a Pokemon-style encounter roll: the route, vehicle profile, cargo load, and escort choice shape the chance that something finds the convoy. The admin route panel only shows player jobs currently in motion.
 
-Route risk is shown as an encounter chance per hour. This is not a fixed route danger percentage; it is calculated from the encounter catalog, route kind, route length, cargo pressure, and any temporary route stabilization.
+Route risk is shown as expected encounters and chance across the full route. This is not a fixed route danger percentage; it is calculated per mile from the encounter catalog, route kind, route length, cargo pressure, and any temporary route stabilization.
 
 ## Professions
 
@@ -238,15 +238,16 @@ Route stabilization is the first Death Stranding-inspired delivery layer. When a
 
 ## Encounter Catalog
 
-Admin mode has an Encounter Designer panel. It edits the route encounter catalog and custom NPC unit catalog as JSON so encounters can be tuned without changing code. This is inspired by trial-maker tools: define an encounter, define waves, define the units that appear in those waves, then test the result through Dispatch or the battle simulator.
+Admin mode has an Encounter Designer panel. It edits the route encounter catalog and custom NPC unit catalog as JSON so encounters can be tuned without changing code. This is inspired by custom encounter-maker tools: define an encounter, define waves, define the units that appear in those waves, then test the result through Dispatch or the battle simulator.
 
 Important fields:
 
 - `role`: `merchant` encounters attack Merchant convoys. `routejack` encounters are NPC merchant targets for Routejacks.
-- `ratePerHour`: base hourly encounter rate before route stabilization and cargo pressure.
-- `weight`: relative chance of this encounter when multiple eligible encounters can trigger.
-- `routeKinds`: `land`, `water`, or both.
-- `minMiles` / `maxMiles`: distance range for eligible routes.
+- `encounterTier`: `common`, `uncommon`, or `rare`. Admin rate knobs define the base chance per mile for each tier.
+- `rateMultiplier`: encounter-specific multiplier applied to that tier's per-mile rate.
+- `weight`: relative chance of this encounter when multiple encounters share the same role and tier.
+- `routeKinds`: preserved placement metadata for future regional tuning. The current live table does not use this to exclude encounters.
+- `minMiles` / `maxMiles`: preserved placement metadata for future regional tuning. The current live table does not use this to exclude encounters.
 - `difficulty`: rough combat difficulty from 0 to 4.
 - `rarityCeiling`: highest rarity vehicle the NPC can roll from.
 - `attackerClasses`: NPC raider classes used against Merchant convoys.
@@ -254,8 +255,7 @@ Important fields:
 - `supportChance` / `escortChance`: chance to add support vehicles.
 - `cargoUnits`: how much cargo the encounter is carrying or threatening.
 - `clearHours` / `clearReduction`: optional route stabilization reward after clearing the threat.
-- `failureMode`: `steal` means the enemy steals cargo if it wins. `destroy` means the enemy disables or ruins the convoy without creating stolen cargo.
-- `waves`: optional list of enemy or target layouts under the same encounter. Each wave can override label, weight, difficulty, rarity ceiling, vehicle classes, support or escort chance, cargo units, failure mode, and authored NPC units.
+- `waves`: optional list of enemy or target layouts under the same encounter. Each wave can override label, weight, difficulty, rarity ceiling, vehicle classes, support or escort chance, cargo units, and authored NPC units.
 
 Wave unit fields:
 
@@ -268,15 +268,26 @@ Custom NPC unit fields:
 - `label`: display name in logs and replays.
 - `role`: `raider`, `support`, `cargo`, or `escort`.
 - `rarity`, `iconName`: visual metadata.
-- `maxHp`, `speed`, `impact`: core auto-battler stats.
+- `maxHp`, `attackMin`, `attackMax`, `speed`: core creator stats. The current combat engine uses the average of attack min and max as Impact, so attack ranges are a tuning UI convenience rather than a random-damage system.
 - `braveChance`: escort interception chance.
-- `escapeDrag`: pressure that reduces cargo escape progress while this enemy is alive.
-- `targetMode`: `cargo`, `highest-impact`, or `weakest`.
-- `triggers`: future-facing trigger data inspired by Lurker-style custom trials. The prototype preserves trigger JSON now, but only core stats, targeting, brave, and escape drag are active in combat.
+- `triggers`: future-facing trigger data inspired by Lurker-style custom encounters. The prototype can preserve trigger JSON, but custom triggers are not active in combat yet.
+- `futureHooks`: notes for mechanics we may add later, such as crits, harder route hazards, vehicle damage, status effects, item triggers, or non-theft hazards.
 
-Example hazard direction:
+Future hazard direction:
 
-- A slow route anomaly can be authored as a `raider` with low `speed`, high `maxHp`, high `impact`, `escapeDrag`, and `failureMode: "destroy"`. This creates an encounter that is not a Routejack theft event; it is a route danger that tries to disable the convoy.
+- A slow route anomaly could later become a special encounter that is hard to survive and damages vehicles rather than stealing cargo. For now, that idea should be recorded in `futureHooks` or design notes, not implemented as active combat behavior.
+
+## Encounter Rates
+
+Route encounters use a per-mile model. Each mile traveled rolls against the encounter tiers for the player's current route role.
+
+Current default tier rates:
+
+- Common: 2% per mile
+- Uncommon: 1% per mile
+- Rare: 0.5% per mile
+
+The Admin Route Auto-Battle Simulator includes an Encounter Rate Calculator. It shows expected encounters over the selected route, chance of at least one encounter, and per-tier live expectations. Live Dispatch rolls the role's global encounter table once per mile traveled. Longer routes create more rolls; vehicle speed, cargo load, escorts, one-shot risk reduction, and route stabilization feed into a route modifier.
 
 ## Live Route Battles
 
@@ -285,21 +296,21 @@ Route battles now happen from Dispatch, not only in the Admin sandbox.
 Merchant shipment resolution:
 
 1. A Merchant sends cargo with a vehicle from one city to a connected city.
-2. During travel, the route checks elapsed time and rolls against the current encounter chance per hour.
+2. During travel, the route checks miles traveled and rolls against the current encounter chance per mile.
 3. If no encounter triggers before arrival, the cargo arrives safely and pays freight credits.
 4. If an NPC raider encounter triggers, the route creates an NPC Raider vs Merchant auto-battle.
-5. If cargo escapes, survives, or the Routejack side is disabled, the shipment continues toward its destination.
-6. If the NPC raider disables the cargo vehicle, it steals only what fits in its hold. Any unstolen cargo returns with the Merchant vehicle.
+5. If the Merchant convoy disables every NPC raider, the shipment continues toward its destination and convoy HP restores for now.
+6. If the NPC raider disables every Merchant vehicle, the Merchant loses all loaded cargo and the vehicles are sent back home.
 7. The battle is saved in Dispatch as a Route Battle. The player can watch the live replay if they are present, or open the replay later from route history.
 
 Routejack raid resolution:
 
-1. A Routejack chooses a route, lead vehicle, up to two support vehicles, a tactic, and a loot hold policy from Dispatch.
+1. A Routejack chooses a route, lead vehicle, up to two support vehicles, and a loot hold policy from Dispatch.
 2. The convoy travels in real time.
-3. During travel, the route rolls for designed NPC merchant targets using the current encounter chance per hour.
+3. During travel, the route rolls for designed NPC merchant targets using the current encounter chance per mile.
 4. Each triggered target creates a Routejack vs NPC Merchant auto-battle.
 5. If the Routejack convoy wins, it keeps as much cargo as its hold allows.
-6. If the defender repels the raid, the convoy stops and returns with any loot already taken.
+6. If the defender repels the raid, the convoy stops and the Routejack vehicles are sent back home.
 7. If the hold fills, the encounter limit is reached, or the route timer ends, the convoy returns.
 8. If the convoy returns empty, it pays a heat cost. Vehicles are not permanently destroyed in this prototype layer.
 
@@ -307,13 +318,21 @@ Routejack raid resolution:
 
 The Admin Route Auto-Battle Simulator is the balance sandbox for live route PvE. Dispatch uses the same basic engine, while Admin keeps instant and batch simulation tools for balance testing.
 
+The simulator can test either player-facing route role against designed encounters:
+
+- Merchant Shipment: the player convoy is the defender. The selected encounter supplies NPC raiders.
+- Routejack Raid: the player convoy is the attacker. The selected encounter supplies NPC cargo targets and escorts.
+- The encounter dropdown shows every encounter for the selected role, not only encounters that naturally roll on the selected route. Off-route tests are labeled for balance work.
+- Wave can be pinned to one encounter wave or set to Weighted Random for batch balance.
+
+Current beginner merchant target: the first Chrome Pier to Lowline route should mostly teach route risk without being a wall. A Common Runner with a Common Guardian escort should reliably survive Static Skimmers, while skipping the escort should remain noticeably risky. Toll Hounds begin on longer beginner routes so the first short hop is not overly punishing.
+
 Battle terms:
 
 - Integrity: vehicle health. At 0, the vehicle is disabled.
 - Speed: initiative gained each tick.
 - Initiative: reaches 100 to take an action, then spends 100.
 - Impact: base attack strength.
-- Escape: cargo progress. Cargo escapes at 100%.
 - Profile: detection footprint before battle.
 - Sensor: detection strength before battle.
 
@@ -328,26 +347,22 @@ Advanced terms planned for later:
 
 Route matchup:
 
-- Routejack vs Merchant: the Routejack side tries to disable the Merchant cargo vehicle and take the cargo.
+- Routejack vs Merchant: both sides fight until one side has no active vehicles.
 
 Route parties:
 
 - Attacker party: lead vehicle plus up to two support vehicles.
 - Defender party: cargo vehicle plus up to two escorts.
 
-Attackers win by disabling cargo. Defenders win by escaping, surviving the route timer, or disabling all attackers.
+Attackers win by disabling every defender. Defenders win by disabling every attacker.
 
-Current attacker tactics:
+Future item/module effect ideas:
 
-- Hit Cargo First: attackers focus the cargo vehicle whenever possible.
-- Disable Escorts: attackers remove escorts before focusing cargo.
-- Target Fastest: attackers pressure the fastest opposing unit.
-
-Current defender tactics:
-
-- Protect Cargo: escorts get stronger Brave chances and try to keep cargo alive.
-- Counter Lead: defenders focus the attacker lead.
-- Prioritize Escape: cargo gains escape pressure but gives up some attack power.
+- Cargo Focus: an Interceptor module that prioritizes cargo.
+- Escort Scrambler: a Routejack tool that pressures escorts first.
+- Speed Hunt: a scanner/sensor item that targets the fastest opposing vehicle.
+- Cargo Bulwark: a Guardian module that protects cargo.
+- Emergency Shield: a future defensive module that helps survive the fight without adding a second win condition.
 
 Battle flow:
 
@@ -355,14 +370,13 @@ Battle flow:
 2. Vehicle stats are derived from vehicle rarity, speed, durability, cargo capacity, role slot, route compatibility, and manual modifiers.
 3. Every tick adds each live vehicle's Speed to its Initiative.
 4. Vehicles act when Initiative reaches 100, then spend 100 Initiative. Overflow carries forward.
-5. Cargo vehicles use their action to gain Escape progress.
-6. Non-cargo vehicles use their action to attack a target and reduce Integrity.
-7. The log records action turns, attacks, escape pushes, disabled vehicles, and status snapshots.
+5. Every active vehicle attacks a target and reduces Integrity.
+6. The log records action turns, attacks, disabled vehicles, and status snapshots.
 
 Current win conditions:
 
-- Attackers take cargo when the cargo vehicle reaches 0 Integrity.
-- Defenders keep cargo by reaching 100 Escape, surviving the tick limit, or disabling every attacker.
+- Attackers take cargo when every defending vehicle reaches 0 Integrity.
+- Defenders keep cargo when every attacking vehicle reaches 0 Integrity.
 - Cargo capacity matters in the live route design: Routejacks can only keep stolen cargo that fits their vehicle hold. The simulator models cargo load by making loaded cargo vehicles slower and tougher.
 
 ## Live Battle Replay
@@ -382,7 +396,7 @@ Route modules are intentionally disabled in the current fundamental balance laye
 
 Planned introduction order:
 
-1. Balance the core layer first: detection, cargo, speed, integrity, impact, and escape.
+1. Balance the core layer first: detection, cargo, speed, integrity, impact, and targeting.
 2. Add Shields as the first defensive mechanic.
 3. Add Brave as an escort-only mechanic.
 4. Add simple passive modules that only change stats.
@@ -411,12 +425,12 @@ Current overdrive modules:
 - Cargo Strike Overdrive: hits cargo directly when used by an attacker lead.
 - Stat Buff Overdrive: upgrades one ally at battle start.
 - Random Effect Overdrive: rolls a random battle-start effect.
-- Escape Overdrive: improves cargo escape and shield.
+- Survival Overdrive: gives cargo an emergency shield. Future route-avoidance effects should live outside the current HP-only battle layer.
 - Slow Overdrive: slows and delays enemies.
 
 ## Admin Build Comparison
 
-The Admin simulator can save the current route party as Build A or Build B. Comparing builds runs both saved setups with the same run count and reports cargo take rate, safe rate, escape rate, average ticks, average cargo integrity, and average escape progress.
+The Admin simulator can save the current route party as Build A or Build B. Comparing builds runs both saved setups with the same run count and reports cargo take rate, safe rate, average ticks, and average cargo integrity.
 
 This is the preferred balance workflow before route modules become real inventory items.
 
