@@ -841,7 +841,7 @@ function dispatchVehicleCards(entries, selectedName, dataAttr, emptyText, option
       active: selectedName === item.name,
       disabled,
       attr: `${dataAttr}="${item.name}"`,
-      title: `${item.name} x${count}`,
+      title: `${itemLabel(item)} x${count}`,
       meta: `${vehicleMph(item)} mph - ${Math.max(1, Number(item.capacity || 1))} slots`,
       detail: `${roleText} - ${vehicleModeLabel(item)}`,
       iconName: item.iconName,
@@ -884,6 +884,7 @@ function renderCargoDispatchForm() {
   const cargoMatches = shippableCargo
     .filter(({ item }) => !cargoQuery
       || item.name.toLowerCase().includes(cargoQuery)
+      || itemLabel(item).toLowerCase().includes(cargoQuery)
       || (rarityMeta[item.rarity]?.label || "").toLowerCase().includes(cargoQuery)
       || (item.category || "").toLowerCase().includes(cargoQuery)
       || (item.type || "").toLowerCase().includes(cargoQuery))
@@ -903,7 +904,7 @@ function renderCargoDispatchForm() {
     .map(({ item, count }) => {
       const localBid = highestBid(state.district, item.name);
       return `<button type="button" class="cargo-pick ${state.shipmentCargo === item.name ? "active" : ""}" data-cargo-pick="${item.name}">
-        <span class="item-name">${icon(item.iconName, item.rarity)} ${item.name}</span>
+        <span class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</span>
         <em>x${count}${localBid ? ` · bid ${formatCredits(localBid.price)}` : ""}</em>
       </button>`;
     })
@@ -1270,7 +1271,7 @@ function renderFabDetail() {
     .join("");
   const previewItems = activePattern.items.slice(0, 12);
   const patternPreview = previewItems
-    .map((item) => `<span class="preview-chip">${icon(item.iconName, item.rarity)} ${rarityMeta[item.rarity].label}: ${item.name}</span>`)
+    .map((item) => `<span class="preview-chip">${icon(item.iconName, item.rarity)} ${rarityMeta[item.rarity].label}: ${itemLabel(item)}</span>`)
     .join("") + (activePattern.items.length > previewItems.length ? `<span class="preview-chip">+${activePattern.items.length - previewItems.length} more</span>` : "");
   const recentOutput = (state.fabOutputHistory[fab.id] || [])
     .map((entry) => {
@@ -1285,7 +1286,7 @@ function renderFabDetail() {
     const options = equipmentInSlot(fab.city, slot.id);
     const optionRows = options.length
       ? options.map(({ item, count }) => `<div class="equipment-option">
-          <span class="item-name">${icon(item.iconName, item.rarity)} ${item.name}</span>
+          <span class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</span>
           <strong>+${Math.round(item.rateBonus * 100)}%</strong>
           <em>x${count}</em>
           <button type="button" data-equip-fab-item="${item.name}">Equip</button>
@@ -1971,7 +1972,7 @@ function renderMarket() {
     const globalAsk = bestAskEverywhere(item.name);
     const globalBid = bestBidEverywhere(item.name);
     return `<article class="item-card market-summary">
-      <div class="card-row"><h3 class="item-name">${icon(item.iconName, item.rarity)} ${item.name}</h3>${rarityPill(item.rarity)}</div>
+      <div class="card-row"><h3 class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</h3>${rarityPill(item.rarity)}</div>
       <p class="muted">${item.source} - ${marketCategories[item.category] || item.category}</p>
       <div class="market-stats">
         <span>Local Ask <strong>${ask ? formatCredits(ask.price) : "none"}</strong></span>
@@ -2636,7 +2637,7 @@ function renderBattleSimulator() {
     .join("");
   const optionalVehicleOptions = (selected) => `<option value="none" ${selected === "none" ? "selected" : ""}>None</option>${vehicleOptions(selected)}`;
   const cargoChoices = pvpTargetItems()
-    .map((item) => `<option value="${item.name}" ${battle.cargo === item.name ? "selected" : ""}>${item.name} - ${rarityMeta[item.rarity].label}</option>`)
+    .map((item) => `<option value="${item.name}" ${battle.cargo === item.name ? "selected" : ""}>${itemLabel(item)} - ${rarityMeta[item.rarity].label}</option>`)
     .join("");
   const cargoItemLabel = battle.defenderRole === "routejack" ? "Carried Cargo" : "Cargo Item";
   const cargoVehicleLabel = battle.defenderRole === "routejack" ? "Loot Vehicle" : "Cargo Vehicle";
@@ -2758,7 +2759,7 @@ function renderBattleSimulator() {
 }
 
 function renderAdmin() {
-  const itemOptions = allItems().map((item) => `<option value="${item.name}">${item.name}</option>`).join("");
+  const itemOptions = allItems().map((item) => `<option value="${item.name}">${itemLabel(item)}</option>`).join("");
   const meldOptions = melds.map((meld) => `<option value="${meld.name}">${meld.name}</option>`).join("");
   const dropRateInputs = rarityOrder
     .map((rarity) => `<label class="rate-row">
@@ -2777,7 +2778,7 @@ function renderAdmin() {
       <div class="card-row"><h3>${rarityMeta[rarity].label}</h3><span class="muted">${tierOdds(rarity)}</span></div>
       ${starterItems
         .filter((item) => item.rarity === rarity)
-        .map((item) => `<div class="market-line"><span class="item-name">${icon(item.iconName, item.rarity)} ${item.name}</span><span>${formatCredits(item.value)}</span></div>`)
+        .map((item) => `<div class="market-line"><span class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</span><span>${formatCredits(item.value)}</span></div>`)
         .join("")}
     </article>`)
     .join("");

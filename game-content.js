@@ -1246,27 +1246,41 @@ function withRandomPrintPattern(patterns) {
   ];
 }
 
+function applyPrintPatternOverrides(type, patterns) {
+  const typeOverrides = typeof window !== "undefined"
+    ? window.NEON_CONTENT_OVERRIDES?.printPatterns?.[type] || {}
+    : {};
+  return patterns.map((pattern) => {
+    const next = typeOverrides[pattern.id];
+    if (!next) return pattern;
+    return {
+      ...pattern,
+      label: next.label ? String(next.label) : pattern.label,
+      description: next.description ? String(next.description) : pattern.description,
+    };
+  });
+}
+
 function printPatternsForFabType(type) {
-  if (type === "starter") return withRandomPrintPattern(starterPrintPatternDefs.map(itemPatternFromNames));
-  if (type === "food") return withRandomPrintPattern(foodPrintPatternDefs.map(itemPatternFromNames));
-  if (type === "vehicle") {
-    return withRandomPrintPattern(landVehicleClassDefs.map((classDef) => ({
+  let patterns = [];
+  if (type === "starter") patterns = withRandomPrintPattern(starterPrintPatternDefs.map(itemPatternFromNames));
+  else if (type === "food") patterns = withRandomPrintPattern(foodPrintPatternDefs.map(itemPatternFromNames));
+  else if (type === "vehicle") {
+    patterns = withRandomPrintPattern(landVehicleClassDefs.map((classDef) => ({
       id: classDef.id,
       label: classDef.label,
       description: `${classDef.description} Your fab prints this class only; rarity decides the frame quality.`,
       items: vehicleItems.filter((item) => item.vehicleClass === classDef.id),
     })));
-  }
-  if (type === "aquatic") {
-    return withRandomPrintPattern(aquaticVehicleClassDefs.map((classDef) => ({
+  } else if (type === "aquatic") {
+    patterns = withRandomPrintPattern(aquaticVehicleClassDefs.map((classDef) => ({
       id: classDef.id,
       label: classDef.label,
       description: `${classDef.description} Your fab prints this hull class only; rarity decides the frame quality.`,
       items: aquaticVehicleItems.filter((item) => item.vehicleClass === classDef.id),
     })));
-  }
-  if (type === "boost") {
-    return withRandomPrintPattern([
+  } else if (type === "boost") {
+    patterns = withRandomPrintPattern([
       {
         id: "batteryCap",
         label: "Battery Extension",
@@ -1286,24 +1300,22 @@ function printPatternsForFabType(type) {
         items: boostItems.filter((item) => item.effect === "scanner"),
       },
     ]);
-  }
-  if (type === "nethack") {
-    return [{
+  } else if (type === "nethack") {
+    patterns = [{
       id: "fabBurst",
       label: "Gram Burst",
       description: "Print one-use payloads that force a chosen fab to process grams instantly.",
       items: nethackItems,
     }];
-  }
-  if (type === "equipment") {
-    return withRandomPrintPattern(equipmentSlots.map((slot) => ({
+  } else if (type === "equipment") {
+    patterns = withRandomPrintPattern(equipmentSlots.map((slot) => ({
       id: slot.id,
       label: slot.label,
       description: `Print ${slot.label.toLowerCase()} upgrades only. Better quality parts give stronger grams/hour bonuses.`,
       items: equipmentItems.filter((item) => item.equipmentSlot === slot.id),
     })));
   }
-  return [];
+  return applyPrintPatternOverrides(type, patterns);
 }
 
 function defaultPrintPattern(type) {
@@ -1438,6 +1450,14 @@ const defaultState = () => ({
 });
 
 function applyCreativeContent(overrides = {}) {
+  const applyText = (target, next, fields) => {
+    if (!target || !next) return;
+    fields.forEach((field) => {
+      const value = next[field];
+      if (value !== undefined && value !== null && String(value).length) target[field] = String(value);
+    });
+  };
+
   const itemOverrides = overrides.items || {};
   const itemPools = [starterItems, foodItems, vehicleItems, aquaticVehicleItems, boostItems, nethackItems, equipmentItems];
   itemPools.forEach((pool) => {
@@ -1446,6 +1466,7 @@ function applyCreativeContent(overrides = {}) {
       if (!next) return;
       if (next.label) item.displayName = String(next.label);
       if (next.description) item.description = String(next.description);
+      if (next.use) item.use = String(next.use);
       if (next.flavor) item.flavor = String(next.flavor);
       if (next.art) item.art = String(next.art);
     });
@@ -1469,6 +1490,67 @@ function applyCreativeContent(overrides = {}) {
     if (next.description) district.description = String(next.description);
     if (next.flavor) district.flavor = String(next.flavor);
     if (next.art) district.art = String(next.art);
+  });
+
+  const fabOverrides = overrides.fabs || {};
+  const fabDefinitions = {
+    starter: starterFab,
+    food: foodFab,
+    vehicle: vehicleFab,
+    aquatic: aquaticFab,
+    boost: boostFab,
+    nethack: nethackFab,
+    equipment: equipmentFab,
+  };
+  fabCatalog.forEach((fab) => {
+    const next = fabOverrides[fab.type];
+    if (!next) return;
+    if (next.label) {
+      fab.label = String(next.label);
+      fabDefinitions[fab.type].label = String(next.label);
+    }
+    applyText(fab, next, ["category", "description", "flavor"]);
+    applyText(fabDefinitions[fab.type], next, ["group", "accent", "description", "flavor"]);
+  });
+
+  const roleOverrides = overrides.roles || {};
+  Object.entries(roleOverrides).forEach(([id, next]) => {
+    applyText(roles[id], next, ["label", "text", "benefit", "flavor"]);
+  });
+
+  const contractOverrides = overrides.contracts || {};
+  contractCatalog.forEach((contract) => {
+    applyText(contract, contractOverrides[contract.id], ["chain", "group", "title", "description"]);
+  });
+
+  const slotOverrides = overrides.equipmentSlots || {};
+  equipmentSlots.forEach((slot) => {
+    applyText(slot, slotOverrides[slot.id], ["label"]);
+  });
+
+  const classOverrides = overrides.vehicleClasses || {};
+  const applyClassOverrides = (routeMode, classDefs) => {
+    const routeModeOverrides = classOverrides[routeMode] || {};
+    classDefs.forEach((classDef) => {
+      applyText(classDef, routeModeOverrides[classDef.id], ["label", "description"]);
+    });
+  };
+  applyClassOverrides("land", landVehicleClassDefs);
+  applyClassOverrides("water", aquaticVehicleClassDefs);
+
+  const npcOverrides = overrides.npcUnits || {};
+  defaultNpcCombatUnitCatalog.forEach((unit) => {
+    applyText(unit, npcOverrides[unit.id], ["label", "summary", "flavor"]);
+  });
+
+  const encounterOverrides = overrides.encounters || {};
+  defaultRouteEncounterCatalog.forEach((encounter) => {
+    const next = encounterOverrides[encounter.id];
+    applyText(encounter, next, ["label", "summary", "flavor"]);
+    const waveOverrides = next?.waves || {};
+    (encounter.waves || []).forEach((wave) => {
+      applyText(wave, waveOverrides[wave.id], ["label", "summary", "flavor"]);
+    });
   });
 
   if (overrides.project?.title && typeof document !== "undefined") document.title = String(overrides.project.title);

@@ -8,6 +8,16 @@ This folder is for game-facing creative content that can be edited without touch
 
 The game still uses stable internal names such as `Common Starter Component A` for inventory, recipes, markets, and saves. The override file can change what players see without changing those internal keys.
 
+The current override file includes sections for:
+
+- project title/subtitle
+- cities
+- fabs and print patterns
+- roles and contracts
+- every current item
+- melds
+- NPC units and route encounters
+
 ## How To Use
 
 1. Edit `creative-overrides.js`.
@@ -24,3 +34,5 @@ Keep each entry short and practical:
 - `art`: optional path or note for future artwork.
 
 Avoid changing internal item keys inside recipes or inventories unless we intentionally perform a migration.
+
+Empty strings are safe. They are treated as unfinished notes and will not erase the existing game text.
