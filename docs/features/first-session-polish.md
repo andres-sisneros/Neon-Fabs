@@ -26,10 +26,18 @@ The player should feel like an operator learning a small machine economy. The UI
 ## Likely Files
 
 - `app.js`
+- `ui-scenes.js`
+- `ui-first-session.js`
 - `styles.css`
 - `game-systems.js`
 - `content/creative-overrides.js`
 - `docs/PLAYTEST_CHECKLIST.md`
+
+## Prep Done
+
+- Extracted reusable pixel scenes and fab tiles into `ui-scenes.js`.
+- Extracted first-run, Profile command deck, Print Bay command deck, and collection reveal rendering into `ui-first-session.js`.
+- Left state, save shape, fab output, inventory, market, and dispatch behavior unchanged.
 
 ## Acceptance Checklist
 

@@ -36,6 +36,8 @@ The current prototype is intentionally DOM-first and static:
 
 - `game-content.js`: default data, catalogs, starting state, and content helpers.
 - `game-systems.js`: simulation rules, state transitions, economy, dispatch, combat, and persistence.
+- `ui-scenes.js`: reusable pixel scene and static fab visual components.
+- `ui-first-session.js`: first-run, Profile command deck, Print Bay, and collection reveal rendering helpers.
 - `app.js`: rendering, UI orchestration, action sheets, admin panels, and browser events.
 - `dispatch-flow.js`: dispatch wizard interactions.
 - `styles.css` and `dispatch-flow.css`: app styling.

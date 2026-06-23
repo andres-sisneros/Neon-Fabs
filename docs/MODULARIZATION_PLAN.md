@@ -8,6 +8,8 @@ The app currently works as a static prototype with a few large files. The goal i
 - `game-systems.js`: most rules and state transitions, including market, dispatch, combat, inventory, persistence, and contracts.
 - `game-content.js`: content catalogs, default state, creative overrides, items, fabs, roles, cities, and encounter data.
 - `styles.css`: global app styles for every surface.
+- `ui-scenes.js`: reusable visual scene renderers extracted from `app.js`.
+- `ui-first-session.js`: first-session Profile and Print Bay renderers extracted from `app.js`.
 
 ## Target Shape
 
@@ -117,6 +119,11 @@ Success criteria:
 ### Pass 6: UI Views
 
 Only split UI views after systems are smaller. UI extraction should happen one screen at a time.
+
+Initial extraction done:
+
+- `ui-scenes.js` owns reusable pixel scene and fab tile renderers.
+- `ui-first-session.js` owns first-run, Profile command deck, collection reveal, and city Print Bay command renderers.
 
 Start with lower-risk screens:
 

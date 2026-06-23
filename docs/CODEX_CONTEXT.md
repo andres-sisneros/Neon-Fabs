@@ -37,6 +37,8 @@ Do not let route combat complexity overwhelm the core economy loop.
 - `game-systems.js`: game rules, player actions, markets, dispatch, route combat, and save logic.
 - `game-content.js`: content catalogs, default state, cities, roles, items, fabs, encounters, and creative override hooks.
 - `dispatch-flow.js`: dispatch wizard behavior.
+- `ui-scenes.js`: reusable pixel scene and static fab visual components.
+- `ui-first-session.js`: first-run, Profile command deck, Print Bay, and collection reveal rendering helpers.
 - `content/creative-overrides.js`: author-facing names/flavor/art hooks.
 - `design/`: rough lore, naming, and art direction.
 - `docs/`: active planning, rules, playtest, backend, and archived notes.
