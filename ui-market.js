@@ -61,9 +61,24 @@ function renderMarketModeButton(mode, label, count) {
   </button>`;
 }
 
+function renderMarketReviewActionButton(action, label) {
+  return `<button type="button" class="${state.marketReview.action === action ? "active" : ""}" data-market-review-action="${action}">${label}</button>`;
+}
+
 function renderMarketSellCard({ item, owned, stats }) {
   const bid = stats.bid;
   const ask = stats.ask;
+  const selected = state.marketReview.items[item.name] || 0;
+  const max = marketReviewItemMax(item.name, state.district, state.marketReview.action);
+  const protectedItem = shouldProtectInventoryItem(item.name);
+  const actionLabel = selected ? `Selected x${selected}` : "Select";
+  const disabledReason = protectedItem
+    ? "Protected"
+    : state.marketReview.action === "sell" && !bid
+      ? "No bid"
+      : max <= 0
+        ? "Unavailable"
+        : "";
   return `<article class="market-trade-card">
     <div class="market-card-main">
       <h3 class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</h3>
@@ -75,11 +90,9 @@ function renderMarketSellCard({ item, owned, stats }) {
       <span>${ask ? `Listed from <strong>${formatCredits(ask.price)}</strong>` : "No local ask"}</span>
     </div>
     <div class="market-card-actions">
-      ${
-        bid
-          ? `<button type="button" data-sell-bid="${bid.id}">Sell 1</button>`
-          : `<button type="button" data-item="${item.name}">List</button>`
-      }
+      <button type="button" data-market-review-toggle="${item.name}" ${max > 0 ? "" : "disabled"}>${disabledReason || actionLabel}</button>
+      ${selected ? `<button type="button" class="secondary qty-button" data-market-review-adjust="${item.name}" data-delta="-1">-</button>
+        <button type="button" class="secondary qty-button" data-market-review-adjust="${item.name}" data-delta="1" ${selected >= max ? "disabled" : ""}>+</button>` : ""}
       <button type="button" class="secondary" data-item="${item.name}">Details</button>
     </div>
   </article>`;
@@ -227,6 +240,57 @@ function renderMarketOrderCard(order, type) {
   </article>`;
 }
 
+function renderMarketSellGroup(title, subtitle, rows, emptyText) {
+  return `<section class="market-sell-group">
+    <div class="market-section-head">
+      <div>
+        <h3>${title}</h3>
+        <p class="muted">${subtitle}</p>
+      </div>
+      <span class="pill">${rows.length}</span>
+    </div>
+    <div class="market-card-list">${rows.length ? rows.map(renderMarketSellCard).join("") : `<p class="muted">${emptyText}</p>`}</div>
+  </section>`;
+}
+
+function renderMarketReviewTray() {
+  const preview = marketReviewPreview();
+  const entries = preview.entries;
+  const valueLabel = preview.action === "list" ? "Asking Value" : preview.action === "recycle" ? "Recycle Value" : "Expected Credits";
+  const actionLabel = marketReviewActionLabel(preview.action);
+  const selectedRows = entries.map(({ item, itemName, qty, max }) => `<div class="market-review-row">
+    <span class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</span>
+    <strong>x${qty}</strong>
+    <button type="button" class="secondary qty-button" data-market-review-adjust="${itemName}" data-delta="-1">-</button>
+    <button type="button" class="secondary qty-button" data-market-review-adjust="${itemName}" data-delta="1" ${qty >= max ? "disabled" : ""}>+</button>
+  </div>`).join("");
+  return `<aside class="market-review-tray">
+    <div class="market-review-head">
+      <div>
+        <h3>Review Tray</h3>
+        <p class="muted">Select items, preview the result, then confirm.</p>
+      </div>
+      <span class="pill">${preview.itemCount} selected</span>
+    </div>
+    <div class="segmented market-review-actions">
+      ${renderMarketReviewActionButton("sell", "Sell")}
+      ${renderMarketReviewActionButton("list", "List")}
+      ${renderMarketReviewActionButton("recycle", "Recycle")}
+    </div>
+    <label class="toggle-field"><input id="marketProtectMelds" type="checkbox" ${state.inventoryProtectMelds ? "checked" : ""}> Protect pattern parts</label>
+    <div class="market-review-summary">
+      <span><em>${valueLabel}</em><strong>${formatCredits(preview.expectedCredits)}</strong></span>
+      <span><em>Slots Freed</em><strong>${preview.slotsFreed}</strong></span>
+      <span><em>Protected</em><strong>${preview.protectedCount}</strong></span>
+    </div>
+    <div class="market-review-list">${selectedRows || `<p class="muted">No items selected.</p>`}</div>
+    <div class="button-row">
+      <button type="button" data-action="market-review-apply" ${preview.itemCount ? "" : "disabled"}>${actionLabel}</button>
+      <button type="button" class="secondary" data-action="market-review-clear" ${preview.itemCount ? "" : "disabled"}>Clear</button>
+    </div>
+  </aside>`;
+}
+
 function renderMarketSellFlow() {
   const rows = Object.entries(inventoryFor(state.district))
     .filter(([name, count]) => count > 0 && knownItemName(name))
@@ -236,21 +300,33 @@ function renderMarketSellFlow() {
     })
     .filter(({ item }) => marketFilterMatches(item))
     .sort((a, b) => (b.stats.bid?.price || 0) - (a.stats.bid?.price || 0) || b.owned - a.owned || a.item.name.localeCompare(b.item.name));
+  const protectedRows = rows.filter(({ item }) => shouldProtectInventoryItem(item.name));
+  const bidRows = rows.filter(({ item, stats }) => !shouldProtectInventoryItem(item.name) && stats.bid);
+  const noBidRows = rows.filter(({ item, stats }) => !shouldProtectInventoryItem(item.name) && !stats.bid);
 
   return `<section class="market-flow-panel">
     <div class="market-flow-head">
       <div>
         <h2>Sell From ${currentDistrict().name}</h2>
-        <p class="muted">Only items stored in this city can be sold here.</p>
+        <p class="muted">Only current-city holdings can be managed here.</p>
       </div>
       <span class="pill">${rows.length} held</span>
     </div>
     ${marketFilters()}
-    <div class="market-card-list">${rows.map(renderMarketSellCard).join("") || `<div class="empty-guidance">
-      <h3>No Local Items Match</h3>
-      <p class="muted">Collect prints here, ship cargo here, or clear filters.</p>
-      <div class="button-row"><button type="button" data-action="market-clear-filters">Clear Filters</button><button type="button" data-view="inventory">Inventory</button></div>
-    </div>`}</div>
+    <div class="market-sell-layout">
+      <div class="market-sell-groups">
+        ${rows.length ? `
+          ${renderMarketSellGroup("Has Local Bids", "Items with current demand in this city.", bidRows, "No visible holdings have local bids.")}
+          ${renderMarketSellGroup("No Local Bids", "List these, recycle them, or hold for another city.", noBidRows, "Every visible holding has local demand or protection.")}
+          ${protectedRows.length ? renderMarketSellGroup("Protected Pattern Parts", "Excluded from review actions while protection is on.", protectedRows, "No protected items.") : ""}
+        ` : `<div class="empty-guidance">
+          <h3>No Local Items Match</h3>
+          <p class="muted">Collect prints here, ship cargo here, or clear filters.</p>
+          <div class="button-row"><button type="button" data-action="market-clear-filters">Clear Filters</button><button type="button" data-view="inventory">Inventory</button></div>
+        </div>`}
+      </div>
+      ${renderMarketReviewTray()}
+    </div>
   </section>`;
 }
 

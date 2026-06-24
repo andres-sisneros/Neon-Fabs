@@ -36,6 +36,8 @@ This file tracks decisions that should not be reopened casually.
 - Markets should be listing/bid driven, not top-down percentage pricing.
 - Market UX should be city-first. The landing page should answer what can be sold, bought, or managed in the current city rather than dumping the full item catalog.
 - The Buy surface should use curated shelves and category drilldowns. Full order-book depth belongs in item detail views.
+- Market Sell is the main economy action surface for owned goods.
+- Inventory is storage-first: city capacity, filters, compact item grid, and item-level handoffs.
 - Low-tier items should not be treated as automatic junk.
 - Auto-sell/recycle from Print Bay was removed so players make deliberate economy choices.
 - Recycling exists as a fallback for clearing inventory.

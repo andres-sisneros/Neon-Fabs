@@ -149,6 +149,7 @@ function seedState(nextState) {
     ? [...new Set(nextState.marketWatchlist.filter(knownItemName))]
     : [];
   nextState.marketMeldTarget = melds.some((meld) => meld.name === nextState.marketMeldTarget) ? nextState.marketMeldTarget : "";
+  nextState.marketReview = normalizeMarketReview(nextState.marketReview);
   nextState.inventorySearch = nextState.inventorySearch || "";
   nextState.inventoryCategory = Object.keys(marketCategories).includes(nextState.inventoryCategory) ? nextState.inventoryCategory : "all";
   nextState.inventoryRarity = ["all", ...rarityOrder].includes(nextState.inventoryRarity) ? nextState.inventoryRarity : "all";
@@ -4056,6 +4057,188 @@ function itemMeldDemand(itemName) {
 
 function shouldProtectInventoryItem(itemName) {
   return Boolean(state.inventoryProtectMelds && itemByName(itemName).category === "meld" && itemMeldDemand(itemName).neededBy.length);
+}
+
+function normalizeMarketReview(review = {}) {
+  const action = ["sell", "list", "recycle"].includes(review.action) ? review.action : "sell";
+  const items = review.items && typeof review.items === "object" && !Array.isArray(review.items)
+    ? Object.fromEntries(
+      Object.entries(review.items)
+        .filter(([name]) => knownItemName(name))
+        .map(([name, qty]) => [name, Math.max(1, Math.floor(Number(qty || 1)))]),
+    )
+    : {};
+  return { action, items };
+}
+
+function marketReviewActionLabel(action = state.marketReview.action) {
+  return {
+    sell: "Sell to bids",
+    list: "List at value",
+    recycle: "Recycle",
+  }[action] || "Sell to bids";
+}
+
+function marketReviewItemMax(itemName, cityId = state.district, action = state.marketReview.action) {
+  if (!knownItemName(itemName)) return 0;
+  if (shouldProtectInventoryItem(itemName)) return 0;
+  const owned = inventoryFor(cityId)[itemName] || 0;
+  if (owned <= 0) return 0;
+  if (action === "sell") {
+    const bid = highestBid(cityId, itemName);
+    return bid ? Math.min(owned, bid.qty || 0) : 0;
+  }
+  return owned;
+}
+
+function marketReviewSelectionEntries(cityId = state.district) {
+  const review = normalizeMarketReview(state.marketReview);
+  state.marketReview = review;
+  return Object.entries(review.items)
+    .map(([itemName, qty]) => {
+      const item = itemByName(itemName);
+      const max = marketReviewItemMax(itemName, cityId, review.action);
+      const selected = Math.min(Math.max(1, Math.floor(Number(qty || 1))), max);
+      return { item, itemName, qty: selected, max };
+    })
+    .filter(({ item, qty, max }) => item && qty > 0 && max > 0);
+}
+
+function marketReviewPreview(cityId = state.district) {
+  const review = normalizeMarketReview(state.marketReview);
+  const entries = marketReviewSelectionEntries(cityId);
+  const itemCount = entries.reduce((sum, entry) => sum + entry.qty, 0);
+  const expectedCredits = entries.reduce((sum, entry) => {
+    if (review.action === "sell") {
+      const bid = highestBid(cityId, entry.itemName);
+      return sum + (bid ? bid.price * entry.qty * (1 + (currentRole().marketSellBonus || 0)) : 0);
+    }
+    if (review.action === "list") return sum + entry.item.value * entry.qty;
+    if (review.action === "recycle") return sum + entry.qty;
+    return sum;
+  }, 0);
+  const protectedCount = filteredInventoryEntries(cityId)
+    .filter(({ item }) => shouldProtectInventoryItem(item.name))
+    .reduce((sum, { count }) => sum + count, 0);
+  return {
+    action: review.action,
+    entries,
+    itemCount,
+    expectedCredits: Math.round(expectedCredits),
+    slotsFreed: itemCount,
+    protectedCount,
+  };
+}
+
+function pruneMarketReview(cityId = state.district) {
+  const review = normalizeMarketReview(state.marketReview);
+  review.items = Object.fromEntries(
+    Object.entries(review.items)
+      .map(([itemName, qty]) => [itemName, Math.min(Math.max(1, Math.floor(Number(qty || 1))), marketReviewItemMax(itemName, cityId, review.action))])
+      .filter(([, qty]) => qty > 0),
+  );
+  state.marketReview = review;
+  return review;
+}
+
+function setMarketReviewAction(action) {
+  state.marketReview = {
+    action: ["sell", "list", "recycle"].includes(action) ? action : "sell",
+    items: {},
+  };
+  render();
+}
+
+function toggleMarketReviewItem(itemName, cityId = state.district) {
+  if (!knownItemName(itemName)) return;
+  const review = pruneMarketReview(cityId);
+  if (review.items[itemName]) delete review.items[itemName];
+  else {
+    const max = marketReviewItemMax(itemName, cityId, review.action);
+    if (max > 0) review.items[itemName] = max;
+  }
+  state.marketReview = review;
+  render();
+}
+
+function adjustMarketReviewItem(itemName, delta, cityId = state.district) {
+  if (!knownItemName(itemName)) return;
+  const review = pruneMarketReview(cityId);
+  const max = marketReviewItemMax(itemName, cityId, review.action);
+  const nextQty = Math.min(max, Math.max(0, Math.floor(Number(review.items[itemName] || 0)) + delta));
+  if (nextQty > 0) review.items[itemName] = nextQty;
+  else delete review.items[itemName];
+  state.marketReview = review;
+  render();
+}
+
+function clearMarketReview() {
+  state.marketReview = { action: state.marketReview?.action || "sell", items: {} };
+  render();
+}
+
+function requestApplyMarketReview() {
+  pruneMarketReview();
+  const preview = marketReviewPreview();
+  if (!preview.itemCount) {
+    addFeed("Market", "nothing selected", "chip");
+    render();
+    return;
+  }
+  const actionText = marketReviewActionLabel(preview.action);
+  const creditLabel = preview.action === "list" ? "total asking value" : "expected credits";
+  openConfirm(
+    "market-review-apply",
+    actionText,
+    `${actionText} for ${preview.itemCount} selected item${preview.itemCount === 1 ? "" : "s"} in ${currentDistrict().name}. ${creditLabel}: ${formatCredits(preview.expectedCredits)}. ${preview.slotsFreed} slot${preview.slotsFreed === 1 ? "" : "s"} will be freed. ${preview.protectedCount ? `${preview.protectedCount} protected pattern part${preview.protectedCount === 1 ? "" : "s"} stay put.` : ""}`,
+    actionText,
+    { danger: preview.action === "recycle" },
+  );
+}
+
+function applyMarketReview() {
+  pruneMarketReview();
+  const preview = marketReviewPreview();
+  if (!preview.itemCount) {
+    addFeed("Market", "nothing selected", "chip");
+    render();
+    return;
+  }
+  let affected = 0;
+  let credits = 0;
+  preview.entries.forEach(({ item, itemName, qty }) => {
+    if (preview.action === "sell") {
+      const result = sellItemToBidAmount(itemName, qty, state.district, "Market Sold");
+      affected += result.amount;
+      credits += result.payout;
+      return;
+    }
+    const amount = Math.min(qty, inventoryFor(state.district)[itemName] || 0);
+    if (!amount || shouldProtectInventoryItem(itemName)) return;
+    removeItem(itemName, amount, state.district);
+    affected += amount;
+    if (preview.action === "list") {
+      state.marketListings.push({
+        id: nextMarketId("list"),
+        cityId: state.district,
+        itemName,
+        seller: state.player,
+        owner: "player",
+        price: item.value,
+        qty: amount,
+      });
+      credits += item.value * amount;
+      recordMarket("Listed", itemName, amount, item.value, state.district);
+      return;
+    }
+    state.credits += amount;
+    credits += amount;
+    trackContract("itemsRecycled", amount);
+    recordMarket("Recycled", itemName, amount, 1, state.district, state.player);
+  });
+  state.marketReview = { action: preview.action, items: {} };
+  addFeed("Market", affected ? `${marketReviewActionLabel(preview.action)}: ${affected} for ${formatCredits(credits)}` : "nothing changed", "chip");
+  render();
 }
 
 function inventoryCategoryMatches(item, category = state.inventoryCategory) {

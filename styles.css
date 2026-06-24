@@ -3397,6 +3397,107 @@ h3 {
   background: rgba(255, 255, 255, 0.035);
 }
 
+.qty-button {
+  min-width: 46px;
+  padding-inline: 12px;
+}
+
+.market-sell-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 12px;
+  align-items: start;
+}
+
+.market-sell-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.market-sell-group,
+.market-review-tray {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.market-review-tray {
+  position: sticky;
+  top: 96px;
+  background: rgba(7, 12, 24, 0.72);
+}
+
+.market-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.market-review-head h3 {
+  margin: 0 0 3px;
+}
+
+.market-review-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.market-review-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.market-review-summary span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(145, 170, 205, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.market-review-summary em {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.market-review-summary strong {
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.market-review-list {
+  display: grid;
+  gap: 8px;
+}
+
+.market-review-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.market-review-row strong {
+  color: var(--cyan);
+}
+
 .market-landing-search {
   display: grid;
   gap: 6px;
@@ -4485,6 +4586,31 @@ h3 {
 .inventory-snapshot strong {
   color: var(--text);
   font-size: 1.05rem;
+}
+
+.inventory-compact-panel {
+  max-width: 1180px;
+}
+
+.inventory-compact-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.inventory-compact-summary span {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(145, 170, 205, 0.14);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .backpack-grid {
@@ -5667,6 +5793,8 @@ h3 {
   .market-card-line,
   .market-compact-card,
   .market-order-card,
+  .market-sell-layout,
+  .market-review-summary,
   .inventory-snapshot,
   .bulk-action-panel,
   .market-columns,
@@ -5698,9 +5826,14 @@ h3 {
   .battle-log-row,
   .battle-status-grid,
   .battle-stat-row,
+  .market-review-row,
   .wiki-grid,
   .wiki-row {
     grid-template-columns: 1fr;
+  }
+
+  .market-review-tray {
+    position: static;
   }
 
   .quick-stats,

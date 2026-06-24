@@ -21,6 +21,8 @@ Keep the first-session loop readable on desktop and phone:
 
 Do not let route combat complexity overwhelm the core economy loop.
 
+Near-term work should prioritize mechanics, economy clarity, Dispatch, inventory, reputation, testing tools, and code hygiene. Creative writing, final item names, deeper lore, and player wiki expansion are intentionally parked until systems feel steadier.
+
 ## Important Boundaries
 
 - Do not rewrite the app into a framework yet.

@@ -1388,6 +1388,7 @@ const defaultState = () => ({
   marketWatchOnly: false,
   marketWatchlist: [],
   marketMeldTarget: "",
+  marketReview: { action: "sell", items: {} },
   inventorySearch: "",
   inventoryCategory: "all",
   inventoryRarity: "all",

@@ -356,39 +356,24 @@ function renderParts() {
   const rarityOptions = [`<option value="all" ${state.inventoryRarity === "all" ? "selected" : ""}>All Rarities</option>`]
     .concat(rarityOrder.map((rarity) => `<option value="${rarity}" ${state.inventoryRarity === rarity ? "selected" : ""}>${rarityMeta[rarity].label}</option>`))
     .join("");
-  const bulkRarityOptions = [`<option value="all" ${state.inventoryBulkRarity === "all" ? "selected" : ""}>All Rarities</option>`]
-    .concat(rarityOrder.map((rarity) => `<option value="${rarity}" ${state.inventoryBulkRarity === rarity ? "selected" : ""}>${rarityMeta[rarity].label} and below</option>`))
-    .join("");
   const visibleUnits = inventoryItems.reduce((sum, { count }) => sum + count, 0);
-  const protectedVisible = inventoryItems.filter(({ item }) => shouldProtectInventoryItem(item.name)).reduce((sum, { count }) => sum + count, 0);
-  const bulkSellTargets = bulkInventoryTargets(state.district, { requireBid: true });
-  const bulkRecycleTargets = bulkInventoryTargets(state.district, { requireNoBid: true, rarityCap: true });
-  const bulkListTargets = bulkRecycleTargets.filter(({ item }) => item.value > 1);
   const cityName = currentDistrict().name;
   const isHomeView = state.district === state.homeCity;
-  const pressure = cityQueuePressure(state.district);
-  const keptPreview = pressure.kept.slice(0, 6).map((entry) => {
-    const item = itemByName(outputName(entry));
-    const fab = outputFabId(entry) ? fabById(outputFabId(entry)) : null;
-    return `<div class="market-line"><span class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</span><strong>${fab ? fabDefinition(fab.type).label : "Print Bay"}</strong></div>`;
-  }).join("");
   mainPanel.innerHTML = `
-    <div class="inventory-layout">
-      <section class="panel inventory-main-panel">
+    <section class="panel inventory-main-panel inventory-compact-panel">
         <div class="blueprint-head">
           <div>
             <h2>${cityName} Inventory</h2>
-            <p class="muted">${isHomeView ? "Home storage." : `Away from ${homeDistrict().name}.`}</p>
+            <p class="muted">${isHomeView ? "Home storage." : `Viewing local storage away from ${homeDistrict().name}.`}</p>
           </div>
           <span class="pill">${inventoryLabel(state.district)} slots</span>
         </div>
         <div class="capacity-bar" aria-label="Inventory capacity"><span style="width:${Math.min(100, (inventoryCount(state.district) / inventoryLimit(state.district)) * 100)}%"></span></div>
-        ${isHomeView ? "" : `<button type="button" data-view="cities">Open Map</button>`}
-        <div class="inventory-snapshot">
-          <span><strong>${visibleUnits}</strong> visible units</span>
-          <span><strong>${inventoryItems.length}</strong> item types</span>
-          <span><strong>${inventoryAvailable(state.district)}</strong> free slots</span>
-          <span><strong>${protectedVisible}</strong> meld locked</span>
+        <div class="inventory-compact-summary">
+          <span>${visibleUnits} visible unit${visibleUnits === 1 ? "" : "s"}</span>
+          <span>${inventoryItems.length} type${inventoryItems.length === 1 ? "" : "s"}</span>
+          <span>${inventoryAvailable(state.district)} free slot${inventoryAvailable(state.district) === 1 ? "" : "s"}</span>
+          ${isHomeView ? "" : `<button type="button" data-view="cities">Open Map</button>`}
         </div>
         <div class="market-toolbar">
           <div class="segmented">${categoryOptions}</div>
@@ -421,65 +406,7 @@ function renderParts() {
                 </div>
               </div>`
         }
-        <div class="fab-metrics inventory-totals">
-          <div class="side-metric"><span>Types</span><strong>${inventoryItems.length}/${allInventoryItems.length}</strong></div>
-          <div class="side-metric"><span>Units</span><strong>${visibleUnits}</strong></div>
-          <div class="side-metric"><span>Meld Lock</span><strong>${protectedVisible}</strong></div>
-          <div class="side-metric"><span>Free</span><strong>${inventoryAvailable(state.district)}</strong></div>
-        </div>
-        <details class="advanced-panel">
-          <summary>Advanced Inventory</summary>
-          <div class="bulk-action-panel">
-            <div>
-              <h3>Bulk Actions</h3>
-              <p class="muted">Uses current filters.</p>
-            </div>
-            <label class="select-field"><span>Rarity Cap</span><select id="inventoryBulkRarity">${bulkRarityOptions}</select></label>
-            <label class="toggle-field"><input id="inventoryProtectMelds" type="checkbox" ${state.inventoryProtectMelds ? "checked" : ""}> Protect meld ingredients</label>
-            <div class="button-row">
-              <button type="button" data-action="inventory-bulk-sell" ${bulkSellTargets.length ? "" : "disabled"}>Sell Visible to Bids</button>
-              <button type="button" data-action="inventory-bulk-recycle" ${bulkRecycleTargets.length ? "" : "disabled"}>Recycle No-Bid Items</button>
-              <button type="button" data-action="inventory-bulk-list" ${bulkListTargets.length ? "" : "disabled"}>List No-Bid at Value</button>
-            </div>
-          </div>
-        </details>
-      </section>
-      <div class="inventory-side-stack">
-      <section class="panel inventory-side-panel">
-        <div class="blueprint-head">
-          <div>
-            <h2>Print Bay</h2>
-            <p class="muted">${pressure.queued.length} sealed.</p>
-          </div>
-          <button type="button" data-view="fabs">Open Fabs</button>
-        </div>
-        <div class="fab-metrics">
-          <div class="side-metric"><span>Storage Free</span><strong>${pressure.available}/${pressure.limit}</strong></div>
-          <div class="side-metric"><span>Sealed Prints</span><strong>${pressure.queued.length}</strong></div>
-          <div class="side-metric"><span>Fits Now</span><strong>${pressure.collectable}</strong></div>
-          <div class="side-metric"><span>Stays Sealed</span><strong>${pressure.remainingSealed}</strong></div>
-        </div>
-        ${
-          pressure.queued.length && pressure.available <= 0
-            ? `<p class="battery-empty">Collection blocked: storage full.</p>`
-            : pressure.remainingSealed
-              ? `<p class="battery-empty">${pressure.collectable} fit now. ${pressure.remainingSealed} stay sealed.</p>`
-              : `<p class="muted">${pressure.queued.length ? "All prints fit." : "No local prints."}</p>`
-        }
-        ${keptPreview ? `<h3>Sealed Prints</h3>${keptPreview}${pressure.kept.length > 6 ? `<p class="muted">+${pressure.kept.length - 6} more.</p>` : ""}` : ""}
-      </section>
-      <section class="panel inventory-side-panel">
-        <div class="blueprint-head">
-          <div>
-            <h2>Dispatch</h2>
-            <p class="muted">Cargo launches from Dispatch.</p>
-          </div>
-          <button type="button" data-view="shipments">Open Dispatch</button>
-        </div>
-        <p class="muted">Use this city inventory to inspect what you own. Go to Dispatch when you are ready to load a vehicle.</p>
-      </section>
-      </div>
-    </div>`;
+      </section>`;
 }
 
 function renderFabs() {
@@ -2866,15 +2793,11 @@ function renderCollectionActionSheet(sheet) {
     eyebrow: "Collected output",
     body: `${available} kept in ${districtById(cityId).name}.`,
     actions: [
+      actionSheetButton("open-market", "Open In Market", {
+        subtext: featureUnlocked("shop") ? "Sell, list, recycle, or inspect local demand" : featureLockReason("shop"),
+        disabled: !featureUnlocked("shop"),
+      }),
       actionSheetButton("open-book", "Open Details", { subtext: "Order book, stats, and item rules" }),
-      actionSheetButton("sell-one", "Sell 1 To Best Bid", {
-        subtext: localBid ? `${formatCredits(localBid.price)} in ${districtById(cityId).name}` : "No local bid",
-        disabled: !localBid || available <= 0,
-      }),
-      actionSheetButton("recycle-one", "Recycle 1", {
-        subtext: "Clear one slot for 1cr",
-        disabled: available <= 0,
-      }),
     ],
     item,
   };
@@ -2892,15 +2815,11 @@ function renderInventoryActionSheet(sheet) {
   return {
     title: itemLabel(item),
     eyebrow: `${districtById(cityId).name} inventory`,
-    body: `${available} owned here. ${protectedItem ? "Protected as a meld ingredient." : "Choose one action for this item."}`,
+    body: `${available} owned here.${protectedItem ? " Protected as a pattern ingredient." : localBid ? ` Local bid: ${formatCredits(localBid.price)}.` : ""}`,
     actions: [
-      actionSheetButton("sell-one", "Sell 1 To Best Bid", {
-        subtext: protectedItem ? "Protected in Inventory settings" : localBid ? `${formatCredits(localBid.price)} in ${districtById(cityId).name}` : "No local bid",
-        disabled: protectedItem || !localBid || available <= 0,
-      }),
-      actionSheetButton("recycle-one", "Recycle 1", {
-        subtext: protectedItem ? "Protected in Inventory settings" : "Clear one slot for 1cr",
-        disabled: protectedItem || available <= 0,
+      actionSheetButton("open-market", "Open In Market", {
+        subtext: featureUnlocked("shop") ? "Manage this item in the city market" : featureLockReason("shop"),
+        disabled: !featureUnlocked("shop"),
       }),
       actionSheetButton("ship-item", "Send With Vehicle", {
         subtext: state.role !== "merchant"
@@ -2987,6 +2906,7 @@ function executePendingConfirm() {
   if (pending.action === "inventory-bulk-sell") bulkSellFilteredInventory();
   else if (pending.action === "inventory-bulk-recycle") bulkRecycleFilteredInventory();
   else if (pending.action === "inventory-bulk-list") bulkListFilteredInventory();
+  else if (pending.action === "market-review-apply") applyMarketReview();
   else if (pending.action === "retire-fab") retireFab(pending.payload.id);
   else if (pending.action === "reset-session") {
     clearPrototypeSaves();
@@ -3008,6 +2928,14 @@ function executeActionSheet(action) {
   const cityId = sheet.payload.cityId || state.district;
   if (action === "open-book") {
     runAction("select-item", { itemName });
+    return;
+  }
+  if (action === "open-market") {
+    state.marketMode = "sell";
+    state.marketSearch = itemName;
+    state.marketCategory = "all";
+    state.marketRarity = "all";
+    runAction("set-view", { view: "shop" });
     return;
   }
   if (sheet.type === "meld-ingredient") {
@@ -3502,6 +3430,18 @@ document.body.addEventListener("click", (event) => {
     runAction("set-market-mode", { mode: button.dataset.marketMode });
     return;
   }
+  if (button.dataset.marketReviewAction) {
+    setMarketReviewAction(button.dataset.marketReviewAction);
+    return;
+  }
+  if (button.dataset.marketReviewToggle) {
+    toggleMarketReviewItem(button.dataset.marketReviewToggle);
+    return;
+  }
+  if (button.dataset.marketReviewAdjust) {
+    adjustMarketReviewItem(button.dataset.marketReviewAdjust, Number(button.dataset.delta || 0));
+    return;
+  }
   if (button.dataset.inventoryCategory) {
     runAction("set-inventory-category", { category: button.dataset.inventoryCategory });
     return;
@@ -3564,6 +3504,14 @@ document.body.addEventListener("click", (event) => {
   }
   if (button.dataset.action === "market-clear-filters") {
     runAction("clear-market-filters");
+    return;
+  }
+  if (button.dataset.action === "market-review-apply") {
+    requestApplyMarketReview();
+    return;
+  }
+  if (button.dataset.action === "market-review-clear") {
+    clearMarketReview();
     return;
   }
   if (button.dataset.action === "clear-dispatch-notice") {
@@ -3679,6 +3627,13 @@ document.body.addEventListener("change", (event) => {
   }
   if (event.target.id === "inventoryProtectMelds") {
     state.inventoryProtectMelds = event.target.checked;
+    pruneMarketReview();
+    render();
+    return;
+  }
+  if (event.target.id === "marketProtectMelds") {
+    state.inventoryProtectMelds = event.target.checked;
+    pruneMarketReview();
     render();
     return;
   }

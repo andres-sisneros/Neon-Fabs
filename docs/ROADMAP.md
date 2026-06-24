@@ -7,11 +7,12 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 1. Stabilize the first-session loop on GitHub Pages.
 2. Make reputation the visible long-term player goal.
 3. Keep early UI progressively revealed instead of showing every system at once.
-4. Make content authoring easy through `content/creative-overrides.js` and `design/`.
-5. Reduce code/context sprawl before adding larger systems.
-6. Keep Dispatch useful, but avoid making route combat the main learning burden.
-7. Use Admin Test Lab scenarios for faster feature checks.
-8. Keep player-facing docs clean while archiving older prototype notes.
+4. Focus on game mechanics and systems before deeper creative writing.
+5. Make content authoring easy through `content/creative-overrides.js` and `design/`, but do not block mechanics on final names or lore.
+6. Reduce code/context sprawl before adding larger systems.
+7. Keep Dispatch useful, but avoid making route combat the main learning burden.
+8. Use Admin Test Lab scenarios for faster feature checks.
+9. Keep player-facing docs clean while archiving older prototype notes.
 
 ## Next Build Slices
 
@@ -35,15 +36,7 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 - Keep public-release debug tools behind admin/debug mode; prototype Admin now starts with Test Lab scenarios.
 - Let Admin become a desktop-first workbench instead of forcing it into the mobile player UI.
 
-### 4. Creative Starter Set
-
-- Rename Starter Fab components.
-- Rename starter melds.
-- Add city flavor hooks.
-- Add item flavor only where it appears naturally in detail views.
-- Grow the new player Wiki only after language and systems stabilize.
-
-### 5. Dispatch Simplification
+### 4. Dispatch Simplification
 
 - Keep role-specific dispatch surfaces.
 - Make Merchant route selection, vehicle selection, and cargo loading feel less form-like.
@@ -51,12 +44,29 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 - Keep route encounters PvE and readable.
 - Move advanced battle tuning to Admin.
 
+### 5. Economy And Inventory Systems
+
+- Make market and inventory decisions clearer without adding more buttons.
+- Keep city-local inventory and city-local markets central.
+- Add Test Lab scenarios before changing any market, inventory, or route economy loop.
+- Watch for places where automation removes strategic choice.
+
 ### 6. Code Modularization
 
 - Market UI renderers have been extracted to `ui-market.js`; extract Market CSS once the layout settles.
 - Extract low-risk pure helpers first.
 - Avoid broad rewrites.
 - Keep each extraction behavior-preserving and covered by smoke tests.
+
+### 7. Creative Starter Set
+
+Parked until core mechanics feel steadier.
+
+- Rename Starter Fab components.
+- Rename starter patterns or final replacement for "melds."
+- Add city flavor hooks.
+- Add item flavor only where it appears naturally in detail views.
+- Grow the new player Wiki only after language and systems stabilize.
 
 ## Later
 

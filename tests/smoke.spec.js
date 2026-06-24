@@ -112,8 +112,48 @@ test("print bay reveal leads into backpack inventory", async ({ page }) => {
   await expect(page.locator(".reveal-feature")).toContainText("Best pull");
   await expect(page.locator(".collection-result")).not.toHaveCount(0);
   await page.getByRole("button", { name: "Review Inventory" }).click();
-  await expect(page.locator(".inventory-layout")).toBeVisible();
+  await expect(page.locator(".inventory-compact-panel")).toBeVisible();
   await expect(page.locator(".backpack-grid")).toBeVisible();
+});
+
+test("market sell review tray handles city inventory deliberately", async ({ page }) => {
+  await openGame(page, "inventory", "drifter");
+  await page.evaluate(() => {
+    state.contractStats.meldsFused = 1;
+    state.cityInventories[state.district] = {};
+    addItem("Common Logic Board", 3, state.district, true);
+    state.marketBids.unshift({
+      id: "test-bid-common-logic-board",
+      cityId: state.district,
+      itemName: "Common Logic Board",
+      buyer: "Test Desk",
+      owner: "npc",
+      price: 9,
+      qty: 10,
+    });
+    render();
+  });
+
+  await expect(page.locator(".inventory-compact-panel")).toBeVisible();
+  await expect(page.locator(".bulk-action-panel")).toHaveCount(0);
+  await page.locator('[data-open-inventory-actions="Common Logic Board"]').click();
+  await page.getByRole("button", { name: "Open In Market" }).click();
+  await expect(page.locator(".market-review-tray")).toBeVisible();
+  await expect(page.getByText("Has Local Bids")).toBeVisible();
+  await page.locator('[data-market-review-toggle="Common Logic Board"]').click();
+  await expect(page.locator(".market-review-tray")).toContainText("3 selected");
+  await expect(page.locator(".market-review-tray")).toContainText("Expected Credits");
+  await page.locator('[data-action="market-review-apply"]').click();
+  await page.locator('[data-action="confirm-accept"]').click();
+
+  const snapshot = await page.evaluate(() => ({
+    credits: state.credits,
+    owned: inventoryFor(state.district)["Common Logic Board"] || 0,
+    sold: state.contractStats.itemsSold,
+  }));
+  expect(snapshot.credits).toBeGreaterThan(0);
+  expect(snapshot.owned).toBe(0);
+  expect(snapshot.sold).toBe(3);
 });
 
 test("core screens render without browser errors", async ({ page }, testInfo) => {
