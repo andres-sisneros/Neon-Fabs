@@ -1379,6 +1379,7 @@ const defaultState = () => ({
   activeView: "profile",
   viewHistory: [],
   selectedMeldType: "starter",
+  marketMode: "sell",
   marketCategory: "all",
   marketSearch: "",
   marketRarity: "all",

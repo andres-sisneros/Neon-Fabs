@@ -138,6 +138,7 @@ function seedState(nextState) {
   nextState.dropRates = { ...defaultDropRates(), ...(nextState.dropRates || {}) };
   nextState.noItemWeight = Number.isFinite(Number(nextState.noItemWeight)) ? Number(nextState.noItemWeight) : defaultNoItemWeight();
   nextState.selectedMeldType = ["starter", "food"].includes(nextState.selectedMeldType) ? nextState.selectedMeldType : "starter";
+  nextState.marketMode = ["sell", "buy", "orders"].includes(nextState.marketMode) ? nextState.marketMode : "sell";
   nextState.marketCategory = Object.keys(marketCategories).includes(nextState.marketCategory) ? nextState.marketCategory : "all";
   nextState.marketSearch = nextState.marketSearch || "";
   nextState.marketRarity = ["all", ...rarityOrder].includes(nextState.marketRarity) ? nextState.marketRarity : "all";
@@ -4608,6 +4609,11 @@ function runAction(action, payload = {}) {
     render();
     return true;
   }
+  if (action === "set-market-mode") {
+    state.marketMode = ["sell", "buy", "orders"].includes(payload.mode) ? payload.mode : "sell";
+    render();
+    return true;
+  }
   if (action === "set-inventory-category") {
     state.inventoryCategory = payload.category;
     render();
@@ -4665,7 +4671,7 @@ function runAction(action, payload = {}) {
     state.marketCategory = "all";
     state.marketSearch = "";
     state.marketRarity = "all";
-    state.marketShowEmpty = true;
+    state.marketShowEmpty = false;
     state.marketWatchOnly = false;
     render();
     return true;

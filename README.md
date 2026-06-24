@@ -5,6 +5,7 @@ Neon Fabs is a static browser prototype for an asynchronous cyberpunk economy ga
 ## Start Here
 
 - `docs/CODEX_CONTEXT.md`: compact project context for Codex and future contributors.
+- `docs/CHANGE_PROCESS.md`: required feature and documentation workflow.
 - `docs/ROADMAP.md`: current active roadmap only.
 - `docs/DESIGN_DECISIONS.md`: locked design decisions and working assumptions.
 - `docs/MODULARIZATION_PLAN.md`: how the large prototype files should be split over time.

@@ -176,11 +176,15 @@ Boosts are consumable items.
 
 The market is order-driven. Sellers post listings, buyers post bids, and trades happen against those orders. Prices are not set by a global percentage slider.
 
-The market page can be filtered by category, search text, rarity, watched items, and whether empty order books are visible. This is meant to scale to many more fab and item types without making the player scroll through every possible output.
+The Market page is split into three player modes:
 
-Watched items appear in a market watchlist with best ask, best bid, and owned counts across all cities. Item order books also include a city-by-city price snapshot, so a player can see whether buying remotely is useful or whether they need to move goods.
+- Sell: shows items stored in the current city and lets the player sell into local bids or open details to list items.
+- Buy: starts as a city-market landing page with search, pattern needs, local listings, watched items, and category tiles. It should not default to a full item catalog on mobile.
+- Orders: shows the player's active listings and buy orders.
 
-The market also has a meld shopping helper. Pick an incomplete meld and it shows the missing home-city components, what is already owned in other cities, and the best visible listing for each missing part.
+Searching or choosing a category opens focused Buy results. Item detail pages remain the deeper order-book surface with listings, bids, order placement, and city-by-city market snapshots.
+
+Watched items can appear in the Buy landing page when relevant. Pattern needs show missing home-city components and local or visible listings when available.
 
 NPC orders currently seed the market for testing. Later, human player and NPC activity should drive liquidity and price discovery.
 

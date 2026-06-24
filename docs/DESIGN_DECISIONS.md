@@ -34,6 +34,8 @@ This file tracks decisions that should not be reopened casually.
 ## Economy
 
 - Markets should be listing/bid driven, not top-down percentage pricing.
+- Market UX should be city-first. The landing page should answer what can be sold, bought, or managed in the current city rather than dumping the full item catalog.
+- The Buy surface should use curated shelves and category drilldowns. Full order-book depth belongs in item detail views.
 - Low-tier items should not be treated as automatic junk.
 - Auto-sell/recycle from Print Bay was removed so players make deliberate economy choices.
 - Recycling exists as a fallback for clearing inventory.
@@ -61,4 +63,5 @@ This file tracks decisions that should not be reopened casually.
 - Do not put long system explanations in every screen.
 - Use contracts, wiki, and contextual detail panels for teaching.
 - Keep actions contextual. Avoid huge button walls.
+- Prefer intent-first surfaces over database views, especially on mobile.
 - Use in-app panels instead of browser-native popups.

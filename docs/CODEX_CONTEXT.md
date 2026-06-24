@@ -49,7 +49,9 @@ Do not let route combat complexity overwhelm the core economy loop.
 
 ## How To Work
 
-For a new feature, create or update a file in `docs/features/` first. Keep it short:
+For a new feature, UX redesign, systems change, balance pass, or refactor, follow `docs/CHANGE_PROCESS.md`.
+
+Create or update a file in `docs/features/` before implementation when the change is meaningful. Keep it short:
 
 - player goal
 - scope
@@ -58,6 +60,16 @@ For a new feature, create or update a file in `docs/features/` first. Keep it sh
 - test checklist
 
 Then implement the smallest playable slice and run `npm test` when behavior or UI changes.
+
+Before finishing, update docs when the change affects:
+
+- player-facing rules or terminology: `docs/WIKI.md`
+- locked design choices: `docs/DESIGN_DECISIONS.md`
+- current priorities: `docs/ROADMAP.md`
+- file map or architecture: this file and `docs/MODULARIZATION_PLAN.md`
+- content/lore/naming: `content/creative-overrides.js` or `design/`
+
+In the final response, state which docs changed or why no doc update was needed.
 
 ## Current Refactor Rule
 

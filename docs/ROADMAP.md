@@ -17,7 +17,7 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 
 - Tighten home city selection.
 - Make first Print Bay collection feel satisfying.
-- Make first inventory/market decision obvious without over-explaining.
+- Keep first inventory and market decisions obvious without over-explaining.
 - Make first meld creation feel like a reputation milestone.
 
 ### 2. Reputation Progression
@@ -48,6 +48,7 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 
 ### 6. Code Modularization
 
+- Extract Market UI/CSS after the Market V2 redesign settles.
 - Extract low-risk pure helpers first.
 - Avoid broad rewrites.
 - Keep each extraction behavior-preserving and covered by smoke tests.
