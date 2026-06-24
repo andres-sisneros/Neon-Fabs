@@ -13,6 +13,7 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 7. Keep Dispatch useful, but avoid making route combat the main learning burden.
 8. Use Admin Test Lab scenarios for faster feature checks.
 9. Keep player-facing docs clean while archiving older prototype notes.
+10. Build shared beta backend in milestones without breaking local prototype mode.
 
 ## Next Build Slices
 
@@ -68,9 +69,16 @@ Parked until core mechanics feel steadier.
 - Add item flavor only where it appears naturally in detail views.
 - Grow the new player Wiki only after language and systems stabilize.
 
+### 8. Shared Beta Backend
+
+- Keep local prototype mode working while server mode is added behind an explicit beta path.
+- Use Cloudflare Worker API and D1 for the friends-only shared beta.
+- Implement server-owned systems in order: tester accounts, state loading, fabs/inventory, markets, patterns/reputation, then Dispatch PvE lite.
+- Keep beta progress wipeable until economy and schema are stable.
+
 ## Later
 
-- Backend accounts and shared economy.
-- Server-authoritative fab output, markets, shipments, and encounters.
+- Open sign-up and public shared economy.
+- Server-authoritative route combat beyond Dispatch PvE lite.
 - Route modules only after core route combat is understandable.
 - Real asset pipeline for city atmosphere, fabs, vehicles, and item art.

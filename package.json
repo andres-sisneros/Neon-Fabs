@@ -4,13 +4,16 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-    "test": "npm run test:syntax && npm run test:e2e",
-    "test:syntax": "node --check app.js && node --check game-systems.js && node --check game-content.js && node --check ui-scenes.js && node --check ui-first-session.js && node --check ui-intro.js && node --check content/creative-overrides.js && node --check scripts/serve-lan.js",
+    "test": "npm run test:syntax && npm run test:api && npm run test:e2e",
+    "test:syntax": "node --check app.js && node --check game-systems.js && node --check game-content.js && node --check ui-scenes.js && node --check ui-first-session.js && node --check ui-intro.js && node --check worker/index.mjs && node --check content/creative-overrides.js && node --check scripts/serve-lan.js",
+    "test:api": "node --test tests/beta-api.test.mjs",
     "test:e2e": "node scripts/run-playtest.js",
     "test:e2e:raw": "playwright test",
     "test:e2e:headed": "node scripts/run-playtest.js --headed",
     "test:e2e:ui": "playwright test --ui",
     "serve": "node scripts/static-server.js",
+    "worker:dev": "npx wrangler dev",
+    "worker:schema": "npx wrangler d1 execute neon-fabs-beta --local --file=worker/schema.sql",
     "serve:lan": "node scripts/serve-lan.js"
   },
   "repository": {

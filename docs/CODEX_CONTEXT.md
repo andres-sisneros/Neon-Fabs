@@ -44,12 +44,17 @@ Near-term work should prioritize mechanics, economy clarity, Dispatch, inventory
 - `ui-first-session.js`: first-run, Profile command deck, Print Bay, and collection reveal rendering helpers.
 - `ui-intro.js`: first-load intro overlay that establishes the game world before the app UI.
 - `ui-market.js`: Market page rendering helpers for Sell, Buy, Orders, and focused item/category browsing.
+- `worker/index.mjs`: Cloudflare Worker API foundation for the future shared beta.
+- `worker/schema.sql`: D1 schema for beta accounts, inventories, fabs, markets, patterns, shipments, and logs.
+- `wrangler.jsonc`: Cloudflare Worker config with D1 binding placeholder.
 - `content/creative-overrides.js`: author-facing names/flavor/art hooks.
 - `assets/`: bundled art/audio assets.
 - `ASSET_CREDITS.md`: required third-party asset license tracking.
 - `design/`: rough lore, naming, and art direction.
 - `docs/`: active planning, player wiki, playtest, backend, system notes, and archived notes.
+- `docs/BETA_RELEASE_PLAN.md`: shared online beta target, milestones, and gates.
 - `tests/smoke.spec.js`: desktop and phone smoke tests.
+- `tests/beta-api.test.mjs`: Worker API contract tests.
 
 ## How To Work
 

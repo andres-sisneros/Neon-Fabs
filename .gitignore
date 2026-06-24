@@ -1,6 +1,7 @@
 *.log
 lan-server.*.log
 node_modules/
+.wrangler/
 playwright-report/
 test-results/
 playtest-artifacts/

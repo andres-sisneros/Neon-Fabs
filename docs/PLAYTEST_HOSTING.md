@@ -75,3 +75,16 @@ Move to backend work when we want:
 - reliable friend playtests where everyone affects the same world
 
 See `BACKEND_PLAN.md` for the future server model.
+
+## Shared Beta Backend Local Check
+
+The first Worker/D1 foundation is now in the repo, but the browser client has not switched to server mode yet.
+
+Useful local commands after Wrangler is available:
+
+```powershell
+npm run worker:schema
+npm run worker:dev
+```
+
+Before real deployment, replace the placeholder D1 database id in `wrangler.jsonc` and set an `ADMIN_TOKEN` secret with Wrangler. Manual tester creation uses `POST /api/admin/tester` with the `x-admin-token` header.

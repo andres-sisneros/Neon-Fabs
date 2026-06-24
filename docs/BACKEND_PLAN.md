@@ -1,15 +1,28 @@
 # Backend Plan
 
-## Recommended Approach
+## Current Beta Direction
+
+Use Cloudflare Pages for the client, a Cloudflare Worker for the API, and Cloudflare D1 for the early shared beta database.
+
+The first foundation slice exists now:
+
+- `worker/index.mjs`: Worker API endpoints and server-owned action contracts.
+- `worker/schema.sql`: D1 schema.
+- `wrangler.jsonc`: Worker config with a D1 binding placeholder.
+- `tests/beta-api.test.mjs`: API tests that run without a live D1 database.
+
+The browser client still runs the local prototype by default. Server mode should be added behind an explicit beta flag after the API foundation stabilizes.
+
+## Original Recommended Approach
 
 Use a server-authoritative web app with a relational database. The browser should become a client only; timers, batteries, shipments, markets, raids, and fab output should be resolved by the server.
 
-Good prototype stack:
+Good prototype stack options:
 
-- App: Node/Express or Next.js
-- Database: PostgreSQL
-- Auth: session or OAuth provider
-- Jobs: server cron/queue for shipment arrivals and lease expiration
+- App: Cloudflare Worker API for beta, or Node/Express/Next.js if the project later outgrows Workers.
+- Database: Cloudflare D1 for beta, PostgreSQL if we later need a heavier relational backend.
+- Auth: manual tester sessions first, OAuth later.
+- Jobs: request-time resolution first, Queues/Cron later if route volume needs it.
 
 ## Core Tables
 
