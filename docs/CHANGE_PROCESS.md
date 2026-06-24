@@ -24,13 +24,15 @@ Tiny fixes do not require a feature brief when they do not change design directi
 
 - `docs/features/<feature>.md`: feature scope, out-of-scope, touched files, acceptance checklist, playtest notes.
 - `docs/DESIGN_DECISIONS.md`: locked product, economy, UI, role, route, or architecture decisions that should not be casually reopened.
-- `docs/WIKI.md`: player-facing rules, mechanics, terms, and how systems currently work.
+- `docs/WIKI.md`: stable player-facing rules, mechanics, and terms. Do not use it for prototype tuning notes, admin explanations, or unsettled design debate.
 - `docs/ROADMAP.md`: current priority or sequence changes.
 - `docs/CODEX_CONTEXT.md`: file map, current priority, major architecture boundary, or workflow changes.
 - `docs/MODULARIZATION_PLAN.md`: extraction plans or new module boundaries.
 - `docs/BACKEND_PLAN.md`: account, persistence, shared economy, server authority, or deployment architecture changes.
 - `content/creative-overrides.js` and `design/`: player-facing naming, lore, flavor, and art direction changes.
 - `ASSET_CREDITS.md`: every added third-party or open asset.
+
+Archive older notes when they are useful history but no longer the active plan. Summarize any still-current decisions into `docs/DESIGN_DECISIONS.md`, `docs/ROADMAP.md`, `docs/systems/`, or a feature brief before archiving.
 
 ## Definition Of Done
 

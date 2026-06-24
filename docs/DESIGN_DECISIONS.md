@@ -66,3 +66,12 @@ This file tracks decisions that should not be reopened casually.
 - Keep actions contextual. Avoid huge button walls.
 - Prefer intent-first surfaces over database views, especially on mobile.
 - Use in-app panels instead of browser-native popups.
+
+## Prototype Testing
+
+- Admin should behave like a small QA studio, not one flat tool drawer.
+- Admin may become an almost separate desktop-first workbench experience, even while it still shares the same static app, local state, and game systems.
+- Admin does not need to satisfy the same mobile ergonomics as the player game while it remains a developer-only surface.
+- Test Lab scenarios should be the first Admin surface for new feature testing.
+- Raw debug powers, balance tools, encounter editors, and save tools should remain available but grouped by purpose.
+- Player-facing wiki content should stay compact and stable. Prototype-era rules dumps belong in archive, feature briefs, design decisions, or system docs.

@@ -10,6 +10,8 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 4. Make content authoring easy through `content/creative-overrides.js` and `design/`.
 5. Reduce code/context sprawl before adding larger systems.
 6. Keep Dispatch useful, but avoid making route combat the main learning burden.
+7. Use Admin Test Lab scenarios for faster feature checks.
+8. Keep player-facing docs clean while archiving older prototype notes.
 
 ## Next Build Slices
 
@@ -30,7 +32,8 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 
 - Keep new surfaces hidden until their related contract or role milestone.
 - Add a lightweight optional systems drawer later if playtesters want to know what exists.
-- Move public-release debug tools behind an admin/debug mode.
+- Keep public-release debug tools behind admin/debug mode; prototype Admin now starts with Test Lab scenarios.
+- Let Admin become a desktop-first workbench instead of forcing it into the mobile player UI.
 
 ### 4. Creative Starter Set
 
@@ -38,6 +41,7 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 - Rename starter melds.
 - Add city flavor hooks.
 - Add item flavor only where it appears naturally in detail views.
+- Grow the new player Wiki only after language and systems stabilize.
 
 ### 5. Dispatch Simplification
 

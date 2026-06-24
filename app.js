@@ -1874,107 +1874,61 @@ function renderDistricts() {
 }
 
 function renderWiki() {
-  const fabRows = fabCatalog.map((fab) => `<div class="wiki-row">
-    <strong>${fab.label}</strong>
-    <span>${fab.category} fab. ${fab.rate} grams/hour base rate. Patterns: ${printPatternsForFabType(fab.type).map((pattern) => pattern.label).join(", ")}. Sold in ${fab.cities.map((city) => districtById(city).name).join(", ")}.</span>
-  </div>`).join("");
-  const roleRows = Object.values(roles).map((role) => `<div class="wiki-row">
-    <strong>${role.label}</strong>
-    <span>${role.text} ${role.benefit}</span>
-  </div>`).join("");
-  const moduleRows = routeModuleCatalog.map((module) => `<div class="wiki-row">
-    <strong>${module.label}</strong>
-    <span>${module.type === "overdrive" ? "Overdrive" : "Standard"} route module. ${module.summary}</span>
-  </div>`).join("");
   mainPanel.innerHTML = `
     <section class="panel wiki-page">
       <div class="blueprint-head">
         <div>
           <h2>Neon Fabs Wiki</h2>
-          <p class="muted">A living rules page for the current prototype. This mirrors the Markdown wiki file in the project folder and will keep growing as systems settle.</p>
+          <p class="muted">A clean player-facing guide. Prototype notes and admin tuning details have moved out of the way while the world gets polished.</p>
         </div>
-        <span class="pill">draft</span>
+        <span class="pill">player guide</span>
       </div>
       <div class="wiki-grid">
         <article class="wiki-card">
-          <h3>Core Loop</h3>
-          <p>Your battery runs in real time. While it has charge, active fabs accumulate grams. Each full gram rolls the fab's selected print pattern, often producing no item and sometimes producing that pattern's item at a quality tier.</p>
-          <p>The Print Bay holds sealed prints for the current city. Opening it moves prints into local inventory when there is room and recharges battery to max capacity.</p>
-          <p>This prototype uses a browser-local playtest save. Refreshing keeps this browser's profile; New Test starts clean when design changes need a fresh run.</p>
+          <h3>What You Are Doing</h3>
+          <p>Run city-installed fabs, open sealed Print Bay output, complete patterns, trade through city markets, and build reputation.</p>
+          <p>Credits help you move faster, but reputation is the long game.</p>
         </article>
         <article class="wiki-card">
-          <h3>Print Patterns</h3>
-          <p>Fabs are tuned machines, not mystery boxes. A Boost Fab can be set to Battery Extension, Filament, or Scanner. Equipment fabs can be set to one equipment slot. Vehicle fabs can be set to one route class such as Runner, Freighter, Interceptor, or Guardian.</p>
-          <p>Rarity represents print quality. Better quality versions keep the same role but gain stronger stats, more cargo capacity, better speed, or stronger effects.</p>
+          <h3>First Session</h3>
+          <p>Choose a home city, open your first Print Bay, store the printed parts, then complete your first pattern.</p>
+          <p>Contracts guide the early steps. Later, strategy comes from the city economy.</p>
         </article>
         <article class="wiki-card">
-          <h3>Cities And Home</h3>
-          <p>Inventory is city-local. Buying in Chrome Pier puts the item in Chrome Pier. Shipping is how items move between connected cities. Your home city is where melds live and where home-city fab bonuses matter.</p>
-          <p>Starter home choices are ${STARTER_HOME_CITIES.map((city) => districtById(city).name).join(" and ")}.</p>
+          <h3>Fabs And Print Bay</h3>
+          <p>Fabs print over real time while battery is active. Output stays sealed in the Print Bay until you open it in that city.</p>
+          <p>Opening the Print Bay reveals results and recharges your battery.</p>
         </article>
         <article class="wiki-card">
-          <h3>Melds</h3>
-          <p>Meld fabs produce components, not usable gear. Components must be in the home city to fuse into melds. Each completed meld currently adds +1 hour to battery capacity.</p>
-          <p>Melds are not city inventory items. To move homes later, the design direction is to break melds back into components, ship those components, then rebuild them.</p>
+          <h3>City Inventory</h3>
+          <p>Inventory belongs to cities. An item in Chrome Pier is not available in Lowline until it is shipped there.</p>
+          <p>Markets, equipment, patterns, and dispatch all care where the item physically is.</p>
+        </article>
+        <article class="wiki-card">
+          <h3>Patterns</h3>
+          <p>Patterns are completed from printed components in your home city. They increase battery capacity and reputation.</p>
+          <p>The old prototype term was "meld." That name is still being reconsidered.</p>
         </article>
         <article class="wiki-card">
           <h3>Market</h3>
-          <p>The market is order-driven. Sellers post listings, buyers post bids, and prices come from those orders rather than a global percentage slider. NPC orders currently seed liquidity for testing.</p>
-          <p>Items can also be recycled for credits when you need storage space.</p>
+          <p>Each city has its own market. Sellers post listings, buyers post bids, and prices come from those orders.</p>
+          <p>Low-tier goods can still matter if another city needs them.</p>
         </article>
         <article class="wiki-card">
           <h3>Dispatch</h3>
-          <p>Vehicles move items on routes in real time. Route distance is measured in miles, vehicle speed in mph, and route type can restrict which vehicles can travel.</p>
-          <p>Route work is role-gated: Merchants ship cargo and Routejacks raid designed NPC cargo targets. Drifters, Fabricators, and other non-route roles do not dispatch route jobs.</p>
-          <p>Merchant shipments check hidden NPC route encounters on arrival. An encounter must detect the convoy before battle starts. Detection weighs the NPC vehicle's Sensor, the cargo vehicle's Profile, cargo load, and relative speed.</p>
+          <p>Merchants move cargo between cities. Routejacks send raid convoys against designed NPC targets.</p>
+          <p>Routes take real time, and route encounters are PvE in the current prototype.</p>
         </article>
         <article class="wiki-card">
-          <h3>Route Auto-Battler</h3>
-          <p>The admin simulator is the balance sandbox for designed NPC route encounters. Dispatch route battles use the same core engine, while Admin keeps instant and batch tools for tuning. The current fundamental stats are Integrity, Speed, Impact, Initiative, Profile, and Sensor.</p>
-          <p>Each tick adds Speed to Initiative. At 100 Initiative, a vehicle acts. Every active vehicle attacks; battles continue until one side reaches 0 HP.</p>
-          <p>Module-style effects such as cargo focus, escort disruption, or emergency shields are reserved for future items and modules.</p>
-          <p>Admin Build Comparison lets you save two route-party setups, then run them side by side to compare take rate, safe rate, average ticks, and cargo integrity.</p>
+          <h3>Roles</h3>
+          <p>Your role shapes what kind of work you focus on. Drifters print and trade. Merchants ship cargo. Routejacks raid NPC targets. Fabricators improve production.</p>
         </article>
         <article class="wiki-card">
-          <h3>Battle Flow</h3>
-          <p>Stats come from vehicle rarity, mph, durability, cargo capacity, route compatibility, role slot, and role modifiers. Each tick adds Speed to Initiative; ready vehicles act, spend 100 Initiative, and keep overflow.</p>
-          <p>The current action pipeline is intentionally small: choose a target, apply Impact damage to Integrity, and check whether either side has no active vehicles.</p>
-          <p>Shields, Brave, Corrosion, cooldown specials, modules, and overdrives are planned layers. We add them only after the core layer is readable and tunable.</p>
-        </article>
-        <article class="wiki-card">
-          <h3>Battle Outcomes</h3>
-          <p>Attackers take cargo when every defending vehicle is disabled. Defenders keep cargo by disabling every attacker.</p>
-          <p>The live route direction still cares about cargo capacity: Routejacks can only keep stolen cargo that fits their vehicle hold. The simulator models cargo load by making loaded cargo vehicles slower and tougher.</p>
-        </article>
-        <article class="wiki-card">
-          <h3>Live Battle Replay</h3>
-          <p>Admin can resolve instantly for balance work or watch one battle unfold one turn frame at a time. Dispatch route battle records also open this same replay. The live view reveals a new turn about every two seconds, with a clear turn header, the events that happened, full party HP/status boards, reveal progress, and recent history.</p>
-          <p>The route battle ledger keeps recent encounters so completed shipments and Routejack raids can link back to what happened.</p>
-        </article>
-        <article class="wiki-card">
-          <h3>Cargo Capacity</h3>
-          <p>Each vehicle has cargo slots. Each item unit uses one slot, so a two-slot vehicle can carry either two of the same item or one each of two different items.</p>
-          <p>Routejack NPC raids use the same rule for theft: they can only keep stolen cargo that fits the vehicle hold. Upgrade Loot can replace lower-rarity loot, but it never increases capacity.</p>
-          <p>The destination city needs enough free storage for every cargo unit plus the vehicle. If not, the shipment waits as a blocked arrival.</p>
-        </article>
-        <article class="wiki-card">
-          <h3>Mechanic Roadmap</h3>
-          <p>Layer 0 is detection plus basic initiative combat. Layer 1 adds shields. Layer 2 adds Brave for escorts. Layer 3 adds passive stat modules. Layer 4 adds triggered modules. Layer 5 adds cooldown specials. Layer 6 adds overdrives.</p>
-          <p>The balance spreadsheet in the project folder is the working model for tuning these layers before they are promoted into live Dispatch.</p>
+          <h3>Still Being Written</h3>
+          <p>Names, lore, art, role flavor, and deeper route rules are still being polished.</p>
+          <p>This guide will grow as the public game language becomes stable.</p>
         </article>
       </div>
-    </section>
-    <section class="panel wiki-page" style="margin-top:14px">
-      <h2>Fab Reference</h2>
-      <div class="wiki-list">${fabRows}</div>
-    </section>
-    <section class="panel wiki-page" style="margin-top:14px">
-      <h2>Profession Reference</h2>
-      <div class="wiki-list">${roleRows}</div>
-    </section>
-    <section class="panel wiki-page" style="margin-top:14px">
-      <h2>Route Module Reference</h2>
-      <div class="wiki-list">${moduleRows}</div>
     </section>`;
 }
 
@@ -2436,6 +2390,230 @@ function renderBattleSimulator() {
   </article>`;
 }
 
+function renderAdminTestLab() {
+  const scenarios = [
+    {
+      id: "fresh-start",
+      title: "Fresh Start",
+      label: "Onboarding",
+      detail: "Clean profile before city selection.",
+      check: "Use this before watching someone start from nothing.",
+    },
+    {
+      id: "print-bay-ready",
+      title: "Print Bay Ready",
+      label: "Core Loop",
+      detail: "Starter Fab has guaranteed sealed output.",
+      check: "Open Fabs and confirm collection feels clear.",
+    },
+    {
+      id: "first-pattern-ready",
+      title: "First Pattern Ready",
+      label: "Patterns",
+      detail: "Home inventory has the first pattern ingredients.",
+      check: "Fuse the first pattern and watch unlock pacing.",
+    },
+    {
+      id: "market-ready",
+      title: "Market Ready",
+      label: "Economy",
+      detail: "Pattern complete, credits and sellable items loaded.",
+      check: "Test local selling, buying, and item detail flow.",
+    },
+    {
+      id: "merchant-ready",
+      title: "Merchant Dispatch",
+      label: "Routes",
+      detail: "Merchant role, vehicle, escort, and cargo prepped.",
+      check: "Send a shipment and inspect active convoy records.",
+    },
+    {
+      id: "routejack-ready",
+      title: "Routejack Raid",
+      label: "Combat",
+      detail: "Routejack role with an attack convoy ready.",
+      check: "Launch a raid and inspect encounter results.",
+    },
+    {
+      id: "equipment-ready",
+      title: "Equipment Install",
+      label: "Fabs",
+      detail: "Equipment Fab owned and local gear available.",
+      check: "Open a fab slot and equip an upgrade.",
+    },
+    {
+      id: "full-inventory",
+      title: "Full Inventory",
+      label: "Stress",
+      detail: "Current city storage is full.",
+      check: "Test blocked collection, inventory cleanup, and market actions.",
+    },
+  ];
+  const cards = scenarios.map((scenario) => `<article class="admin-scenario-card">
+    <div>
+      <span class="mini-tag">${scenario.label}</span>
+      <h3>${scenario.title}</h3>
+      <p class="muted">${scenario.detail}</p>
+    </div>
+    <p>${scenario.check}</p>
+    <button type="button" data-admin="test-scenario-${scenario.id}">Load Test</button>
+  </article>`).join("");
+  return `<section class="admin-lab-panel">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">Developer Test Lab</p>
+        <h2>Jump To A Playtest Moment</h2>
+        <p class="muted">Use scenarios for feature testing. Use raw tools below when you need to tune or break something deliberately.</p>
+      </div>
+      <span class="pill">${scenarios.length} presets</span>
+    </div>
+    <div class="admin-scenario-grid">${cards}</div>
+  </section>`;
+}
+
+function setAdminScenarioBase({ view = "profile", role = "drifter", cityId = "chrome-pier", homeChosen = true } = {}) {
+  state = seedState(defaultState());
+  state.homeCity = cityId;
+  state.district = cityId;
+  state.homeChosen = homeChosen;
+  state.role = role;
+  state.activeView = view;
+  state.viewHistory = [];
+  state.output = [];
+  state.lastCollected = [];
+  state.dispatchNotice = null;
+  state.printBayNotice = null;
+  state.battleReplay = null;
+  state.selectedRouteBattleId = null;
+}
+
+function grantAdminEarlyProgress(ids = []) {
+  state.claimedContracts = [...new Set(ids)];
+  if (ids.includes("collect-first-print-run")) state.contractStats.outputsCollected = 4;
+  if (ids.includes("fuse-first-meld")) {
+    state.contractStats.meldsFused = 1;
+    if (!state.completed.includes("Common Starter Meld")) state.completed.push("Common Starter Meld");
+    state.reputation = normalizeReputation(state.reputation, state.completed);
+  }
+  if (ids.includes("market-sell-3")) state.contractStats.itemsSold = 3;
+  if (ids.includes("market-buy-1")) state.contractStats.itemsBought = 1;
+  if (ids.includes("send-first-shipment")) state.contractStats.shipmentsSent = 1;
+}
+
+function setGuaranteedStarterOutput(cityId = state.district) {
+  state.output = ["Common Starter Component A", "Common Starter Component A", "Common Starter Component B", "Common Starter Component C"]
+    .map((name) => ({ name, cityId, fabType: "starter", fabId: "fab-1" }));
+}
+
+function addFirstPatternIngredients(cityId = state.homeCity) {
+  addItem("Common Starter Component A", 2, cityId, true);
+  addItem("Common Starter Component B", 1, cityId, true);
+  addItem("Common Starter Component C", 1, cityId, true);
+}
+
+function finishAdminScenario(label) {
+  state.lastTick = Date.now();
+  state = seedState(state);
+  addFeed("Test Lab", label, "chip");
+}
+
+function applyAdminTestScenario(scenarioId) {
+  if (scenarioId === "fresh-start") {
+    state = seedState(defaultState());
+    state.activeView = "profile";
+    state.viewHistory = [];
+    addFeed("Test Lab", "Fresh Start loaded", "chip");
+    return;
+  }
+
+  if (scenarioId === "print-bay-ready") {
+    setAdminScenarioBase({ view: "fabs" });
+    setGuaranteedStarterOutput();
+    state.power = batteryCapacity();
+    finishAdminScenario("Print Bay Ready loaded");
+    return;
+  }
+
+  if (scenarioId === "first-pattern-ready") {
+    setAdminScenarioBase({ view: "melds" });
+    grantAdminEarlyProgress(["collect-first-print-run"]);
+    addFirstPatternIngredients();
+    finishAdminScenario("First Pattern Ready loaded");
+    return;
+  }
+
+  if (scenarioId === "market-ready") {
+    setAdminScenarioBase({ view: "shop" });
+    grantAdminEarlyProgress(["collect-first-print-run", "fuse-first-meld"]);
+    state.credits = 1200;
+    state.marketMode = "sell";
+    addItem("Common Starter Component A", 5, state.district, true);
+    addItem("Common Starter Component B", 4, state.district, true);
+    addItem("Common Starter Component C", 3, state.district, true);
+    finishAdminScenario("Market Ready loaded");
+    return;
+  }
+
+  if (scenarioId === "merchant-ready") {
+    setAdminScenarioBase({ view: "shipments", role: "merchant" });
+    grantAdminEarlyProgress(["collect-first-print-run", "fuse-first-meld", "market-sell-3", "market-buy-1"]);
+    state.credits = 1600;
+    addItem("Common Starter Component A", 4, state.district, true);
+    addItem("Common Starter Component B", 3, state.district, true);
+    addItem("Common Runner", 1, state.district, true);
+    addItem("Common Guardian", 1, state.district, true);
+    state.shipmentDestination = "lowline";
+    state.shipmentVehicle = "Common Runner";
+    state.shipmentEscort = "Common Guardian";
+    state.shipmentCargoLoad = { "Common Starter Component A": 2, "Common Starter Component B": 1 };
+    state.shipmentCargoLoadTouched = true;
+    state.dispatchStep = "confirm";
+    finishAdminScenario("Merchant Dispatch loaded");
+    return;
+  }
+
+  if (scenarioId === "routejack-ready") {
+    setAdminScenarioBase({ view: "shipments", role: "routejack" });
+    grantAdminEarlyProgress(["collect-first-print-run", "fuse-first-meld", "market-sell-3", "market-buy-1"]);
+    state.credits = 1600;
+    addItem("Common Interceptor", 1, state.district, true);
+    addItem("Common Runner", 1, state.district, true);
+    addItem("Common Guardian", 1, state.district, true);
+    state.pvpRoute = "lowline";
+    state.pvpVehicle = "Common Interceptor";
+    state.pvpSupport1 = "Common Runner";
+    state.pvpSupport2 = "none";
+    state.pvpLootPolicy = "upgrade";
+    state.dispatchStep = "confirm";
+    finishAdminScenario("Routejack Raid loaded");
+    return;
+  }
+
+  if (scenarioId === "equipment-ready") {
+    setAdminScenarioBase({ view: "fabs" });
+    grantAdminEarlyProgress(["collect-first-print-run", "fuse-first-meld"]);
+    state.fabs.push(createFabRecord("equipment", state.district, false));
+    state.nextFabId = Math.max(state.nextFabId, 3);
+    addItem("Common Logic Board", 1, state.district, true);
+    addItem("Common Extruder", 1, state.district, true);
+    addItem("Common Print Bed", 1, state.district, true);
+    addItem("Common Stepper Motors", 1, state.district, true);
+    state.selectedFabId = "fab-1";
+    state.activeEquipmentSlot = "motherboard";
+    finishAdminScenario("Equipment Install loaded");
+    return;
+  }
+
+  if (scenarioId === "full-inventory") {
+    setAdminScenarioBase({ view: "inventory" });
+    grantAdminEarlyProgress(["collect-first-print-run"]);
+    state.cityInventories[state.district] = {};
+    addItem("Common Starter Component A", inventoryLimit(state.district), state.district, true);
+    setGuaranteedStarterOutput();
+    finishAdminScenario("Full Inventory loaded");
+  }
+}
+
 function renderAdmin() {
   const itemOptions = allItems().map((item) => `<option value="${item.name}">${itemLabel(item)}</option>`).join("");
   const meldOptions = melds.map((meld) => `<option value="${meld.name}">${meld.name}</option>`).join("");
@@ -2461,89 +2639,126 @@ function renderAdmin() {
     </article>`)
     .join("");
   mainPanel.innerHTML = `
-    <div class="admin-grid">
-      <article class="admin-card">
-        <h3>Wallet</h3>
-        <input id="adminCredits" type="number" value="5000" min="0" step="100">
-        <div class="button-row">
-          <button type="button" data-admin="add-credits">Add Credits</button>
-          <button type="button" data-admin="set-credits">Set Credits</button>
+    <div class="admin-workbench">
+      ${renderAdminTestLab()}
+
+      <section class="admin-section">
+        <div class="blueprint-head">
+          <div>
+            <h2>Debug Tools</h2>
+            <p class="muted">Directly shape the local save when a scenario is too broad.</p>
+          </div>
+          <span class="pill">local save</span>
         </div>
-        <input id="adminChips" type="number" value="25" min="0" step="1">
-        <div class="button-row">
-          <button type="button" data-admin="add-chips">Add Chips</button>
-          <button type="button" data-admin="set-chips">Set Chips</button>
+        <div class="admin-grid">
+          <article class="admin-card">
+            <h3>Wallet</h3>
+            <input id="adminCredits" type="number" value="5000" min="0" step="100">
+            <div class="button-row">
+              <button type="button" data-admin="add-credits">Add Credits</button>
+              <button type="button" data-admin="set-credits">Set Credits</button>
+            </div>
+            <input id="adminChips" type="number" value="25" min="0" step="1">
+            <div class="button-row">
+              <button type="button" data-admin="add-chips">Add Chips</button>
+              <button type="button" data-admin="set-chips">Set Chips</button>
+            </div>
+          </article>
+          <article class="admin-card">
+            <h3>${currentDistrict().name} Relics</h3>
+            <select id="adminItem">${itemOptions}</select>
+            <input id="adminItemQty" type="number" value="10" min="1" step="1">
+            <div class="button-row">
+              <button type="button" data-admin="add-item">Add Relic</button>
+              <button type="button" data-admin="queue-item">Add Print Bay Output</button>
+            </div>
+          </article>
+          <article class="admin-card">
+            <h3>Melds</h3>
+            <select id="adminMeld">${meldOptions}</select>
+            <div class="button-row">
+              <button type="button" data-admin="grant-meld">Grant</button>
+              <button type="button" data-admin="grant-all-melds">Grant All</button>
+              <button type="button" data-admin="clear-melds">Clear</button>
+            </div>
+          </article>
+          <article class="admin-card">
+            <h3>Fabs</h3>
+            <input id="adminFabRate" type="number" value="${state.fabs[0].rate}" min="1" step="1">
+            <input id="adminFabGrams" type="number" value="${(state.fabs[0].grams || 0).toFixed(2)}" min="0" step="0.01">
+            <div class="button-row">
+              <button type="button" data-admin="boost-fabs">Set Rate</button>
+              <button type="button" data-admin="set-grams">Set Grams</button>
+              <button type="button" data-admin="grant-vehicle-fab" ${state.fabs.length >= MAX_ACTIVE_FABS || state.fabs.some((fab) => fab.type === "vehicle") ? "disabled" : ""}>Grant Vehicle Fab</button>
+              <button type="button" data-admin="grant-equipment-fab" ${state.fabs.length >= MAX_ACTIVE_FABS || state.fabs.some((fab) => fab.type === "equipment") ? "disabled" : ""}>Grant Equipment Fab</button>
+            </div>
+          </article>
+          <article class="admin-card">
+            <h3>Time</h3>
+            <input id="adminAdvanceHours" type="number" value="1" min="0" step="0.25">
+            <input id="adminPowerSeconds" type="number" value="${Math.round(state.power)}" min="0" step="60">
+            <div class="button-row">
+              <button type="button" data-admin="advance-time">Advance Time</button>
+              <button type="button" data-admin="set-power">Set Battery</button>
+              <button type="button" data-admin="fill-power">Fill Power</button>
+              <button type="button" data-admin="clear-output">Clear Output</button>
+            </div>
+          </article>
+          <article class="admin-card">
+            <h3>Prototype State</h3>
+            <div class="button-row">
+              <button type="button" data-admin="seed-market">Seed Market</button>
+              <button type="button" data-admin="clear-player-orders">Clear Player Orders</button>
+              <button type="button" data-admin="export-save">Export Snapshot</button>
+              <button type="button" data-admin="copy-summary">Copy Summary</button>
+            </div>
+            <p class="muted" id="adminMessage">Admin tools affect this browser-local playtest save. New Test starts from a clean profile.</p>
+          </article>
         </div>
-      </article>
-      <article class="admin-card">
-        <h3>${currentDistrict().name} Relics</h3>
-        <select id="adminItem">${itemOptions}</select>
-        <input id="adminItemQty" type="number" value="10" min="1" step="1">
-        <div class="button-row">
-          <button type="button" data-admin="add-item">Add Relic</button>
-          <button type="button" data-admin="queue-item">Add Print Bay Output</button>
+      </section>
+
+      <section class="admin-section">
+        <div class="blueprint-head">
+          <div>
+            <h2>Drop & Economy Tuning</h2>
+            <p class="muted">Tune output odds and inspect the starter table without mixing it into route combat tools.</p>
+          </div>
+          <span class="pill">balance</span>
         </div>
-      </article>
-      <article class="admin-card">
-        <h3>Melds</h3>
-        <select id="adminMeld">${meldOptions}</select>
-        <div class="button-row">
-          <button type="button" data-admin="grant-meld">Grant</button>
-          <button type="button" data-admin="grant-all-melds">Grant All</button>
-          <button type="button" data-admin="clear-melds">Clear</button>
+        <div class="admin-grid">
+          <article class="admin-card">
+            <h3>Drop Rates</h3>
+            <div class="rate-list">${noItemInput}${dropRateInputs}</div>
+            <div class="button-row">
+              <button type="button" data-admin="set-drop-rates">Set Rates</button>
+              <button type="button" data-admin="reset-drop-rates">Reset Rates</button>
+            </div>
+          </article>
+          <article class="admin-card admin-wide">
+            <div class="blueprint-head"><h3>Starter Drop Table</h3><span class="pill">1g per roll</span></div>
+            <div class="tier-card" style="margin-bottom:12px">
+              <div class="card-row"><h3>No Item</h3><span class="muted">${noItemOdds()}</span></div>
+              <p class="muted">Most full-gram rolls produce no relic. This keeps the fab active without flooding inventory.</p>
+            </div>
+            <div class="tier-grid">${adminDropTable}</div>
+          </article>
         </div>
-      </article>
-      <article class="admin-card">
-        <h3>Drop Rates</h3>
-        <div class="rate-list">${noItemInput}${dropRateInputs}</div>
-        <div class="button-row">
-          <button type="button" data-admin="set-drop-rates">Set Rates</button>
-          <button type="button" data-admin="reset-drop-rates">Reset Rates</button>
+      </section>
+
+      <section class="admin-section">
+        <div class="blueprint-head">
+          <div>
+            <h2>Route & Balance Lab</h2>
+            <p class="muted">Design encounters, inspect active player jobs, and simulate route combat.</p>
+          </div>
+          <span class="pill">systems</span>
         </div>
-      </article>
-      <article class="admin-card admin-wide">
-        <div class="blueprint-head"><h3>Starter Drop Table</h3><span class="pill">1g per roll</span></div>
-        <div class="tier-card" style="margin-bottom:12px">
-          <div class="card-row"><h3>No Item</h3><span class="muted">${noItemOdds()}</span></div>
-          <p class="muted">Most full-gram rolls produce no relic. This keeps the fab active without flooding inventory.</p>
+        <div class="admin-grid">
+          ${renderAdminRouteTrafficPanel()}
+          ${renderAdminEncounterDesigner()}
+          ${renderBattleSimulator()}
         </div>
-        <div class="tier-grid">${adminDropTable}</div>
-      </article>
-      <article class="admin-card">
-        <h3>Starter Mine</h3>
-        <input id="adminFabRate" type="number" value="${state.fabs[0].rate}" min="1" step="1">
-        <input id="adminFabGrams" type="number" value="${(state.fabs[0].grams || 0).toFixed(2)}" min="0" step="0.01">
-        <div class="button-row">
-          <button type="button" data-admin="boost-fabs">Set Rate</button>
-          <button type="button" data-admin="set-grams">Set Grams</button>
-          <button type="button" data-admin="grant-vehicle-fab" ${state.fabs.length >= MAX_ACTIVE_FABS || state.fabs.some((fab) => fab.type === "vehicle") ? "disabled" : ""}>Grant Vehicle Fab</button>
-          <button type="button" data-admin="grant-equipment-fab" ${state.fabs.length >= MAX_ACTIVE_FABS || state.fabs.some((fab) => fab.type === "equipment") ? "disabled" : ""}>Grant Equipment Fab</button>
-        </div>
-      </article>
-      <article class="admin-card">
-        <h3>Time</h3>
-        <input id="adminAdvanceHours" type="number" value="1" min="0" step="0.25">
-        <input id="adminPowerSeconds" type="number" value="${Math.round(state.power)}" min="0" step="60">
-        <div class="button-row">
-          <button type="button" data-admin="advance-time">Advance Time</button>
-          <button type="button" data-admin="set-power">Set Battery</button>
-          <button type="button" data-admin="fill-power">Fill Power</button>
-          <button type="button" data-admin="clear-output">Clear Output</button>
-        </div>
-      </article>
-      ${renderAdminRouteTrafficPanel()}
-      ${renderAdminEncounterDesigner()}
-      ${renderBattleSimulator()}
-      <article class="admin-card">
-        <h3>Prototype State</h3>
-        <div class="button-row">
-          <button type="button" data-admin="seed-market">Seed Market</button>
-          <button type="button" data-admin="clear-player-orders">Clear Player Orders</button>
-          <button type="button" data-admin="export-save">Export Snapshot</button>
-          <button type="button" data-admin="copy-summary">Copy Summary</button>
-        </div>
-        <p class="muted" id="adminMessage">Admin tools affect this browser-local playtest save. New Test starts from a clean profile.</p>
-      </article>
+      </section>
     </div>`;
 }
 
@@ -2859,6 +3074,12 @@ function handleAdmin(action) {
   const nextDropRates = Object.fromEntries(
     rarityOrder.map((rarity) => [rarity, Math.max(0, Number(document.querySelector(`#drop-${rarity}`)?.value || 0))]),
   );
+
+  if (action.startsWith("test-scenario-")) {
+    applyAdminTestScenario(action.replace("test-scenario-", ""));
+    render();
+    return;
+  }
 
   if (action === "battle-single") runBattleSimulation(1);
   if (action === "battle-live") startLiveBattleReplay();

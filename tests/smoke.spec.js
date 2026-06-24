@@ -199,6 +199,7 @@ test("merchant can load mixed cargo and send shipment", async ({ page }) => {
 
 test("admin route activity shows player jobs, not npc traffic controls", async ({ page }) => {
   await openGame(page, "admin", "merchant");
+  await expect(page.getByRole("heading", { name: "Jump To A Playtest Moment" })).toBeVisible();
   await expect(page.getByText("Admin Route Activity")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Encounter Designer" })).toBeVisible();
   await expect(page.getByText("Enemy Library")).toBeVisible();
@@ -206,6 +207,34 @@ test("admin route activity shows player jobs, not npc traffic controls", async (
   await expect(page.getByText("Custom NPC Units")).toBeVisible();
   await expect(page.getByText("Seed NPC Traffic")).toHaveCount(0);
   await expect(page.getByText("Clear NPC Traffic")).toHaveCount(0);
+});
+
+test("admin test lab presets jump to useful playtest states", async ({ page }) => {
+  await openGame(page, "admin", "drifter");
+
+  await page.locator('[data-admin="test-scenario-merchant-ready"]').click();
+  await expect(page.getByText("Cargo Dispatch")).toBeVisible();
+  await expect(page.locator(".cargo-dispatch-form")).toBeVisible();
+  await expect(page.getByText("Ready To Launch")).toBeVisible();
+  let snapshot = await page.evaluate(() => ({
+    role: state.role,
+    activeView: state.activeView,
+    loadedCargo: state.shipmentCargoLoad,
+  }));
+  expect(snapshot.role).toBe("merchant");
+  expect(snapshot.activeView).toBe("shipments");
+  expect(snapshot.loadedCargo["Common Starter Component A"]).toBe(2);
+
+  await page.locator('[data-view="admin"]').click();
+  await page.locator('[data-admin="test-scenario-full-inventory"]').click();
+  await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
+  snapshot = await page.evaluate(() => ({
+    used: inventoryCount(state.district),
+    limit: inventoryLimit(state.district),
+    queued: queuedOutputFor(state.district).length,
+  }));
+  expect(snapshot.used).toBeGreaterThanOrEqual(snapshot.limit);
+  expect(snapshot.queued).toBe(4);
 });
 
 test("melds page uses compact visual set cards", async ({ page }) => {

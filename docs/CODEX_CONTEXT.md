@@ -27,8 +27,9 @@ Do not let route combat complexity overwhelm the core economy loop.
 - Do not move large code blocks unless the refactor has a narrow testable goal.
 - Do not remove historical design notes unless they have been archived.
 - Preserve static hosting compatibility.
-- Keep phone-browser usability in mind for every UI change.
-- Prefer terse UI copy; longer explanations belong in `docs/WIKI.md` or future contextual help.
+- Keep phone-browser usability in mind for every player-facing UI change.
+- Admin/Test Lab is developer-only and may be desktop-first.
+- Prefer terse UI copy; player-facing explanations belong in `docs/WIKI.md` or future contextual help. Prototype/design explanations belong in feature briefs, `docs/DESIGN_DECISIONS.md`, `docs/systems/`, or `docs/archive/`.
 
 ## Current File Map
 
@@ -45,7 +46,7 @@ Do not let route combat complexity overwhelm the core economy loop.
 - `assets/`: bundled art/audio assets.
 - `ASSET_CREDITS.md`: required third-party asset license tracking.
 - `design/`: rough lore, naming, and art direction.
-- `docs/`: active planning, rules, playtest, backend, and archived notes.
+- `docs/`: active planning, player wiki, playtest, backend, system notes, and archived notes.
 - `tests/smoke.spec.js`: desktop and phone smoke tests.
 
 ## How To Work
