@@ -377,6 +377,76 @@ function level() {
   return state.completed.length;
 }
 
+function viewAlias(view) {
+  return {
+    findings: "fabs",
+    mines: "fabs",
+    gadgets: "fabs",
+    "fab-detail": "fabs",
+    things: "inventory",
+    home: "profile",
+  }[view] || view;
+}
+
+function routeRoleSelected(role = state.role) {
+  return role === "merchant" || role === "routejack";
+}
+
+function contractClaimed(id) {
+  return Array.isArray(state.claimedContracts) && state.claimedContracts.includes(id);
+}
+
+function hasOpenedPrintBay() {
+  return Number(state.contractStats?.outputsCollected || 0) > 0
+    || Boolean(state.lastCollected?.length)
+    || Object.values(state.fabOutputHistory || {}).some((entries) => Array.isArray(entries) && entries.length);
+}
+
+function hasMarketActivity() {
+  return Number(state.contractStats?.itemsSold || 0) > 0
+    || Number(state.contractStats?.itemsBought || 0) > 0
+    || Number(state.contractStats?.itemsRecycled || 0) > 0
+    || (state.marketHistory || []).some((entry) => entry.actor === state.player);
+}
+
+function hasRouteActivity() {
+  return Number(state.contractStats?.shipmentsSent || 0) > 0
+    || Boolean((state.shipments || []).length)
+    || routeRoleSelected();
+}
+
+function featureUnlocked(view) {
+  const target = viewAlias(view);
+  if (["profile", "wiki", "admin", "item", "fab-detail"].includes(target)) return true;
+  if (!state.homeChosen) return false;
+  if (["contracts", "fabs"].includes(target)) return true;
+  if (target === "inventory") return hasOpenedPrintBay() || hasMarketActivity() || level() > 0 || Boolean(state.claimedContracts?.length);
+  if (target === "melds") return hasOpenedPrintBay() || Number(state.contractStats?.meldsFused || 0) > 0 || level() > 0;
+  if (target === "shop") return contractClaimed("fuse-first-meld") || Number(state.contractStats?.meldsFused || 0) > 0 || level() > 0 || hasMarketActivity();
+  if (target === "cities") return contractClaimed("fuse-first-meld") || level() > 0 || hasRouteActivity();
+  if (target === "profession") return contractClaimed("fuse-first-meld") || level() > 0 || hasRouteActivity() || state.role !== "drifter";
+  if (target === "shipments") return routeRoleSelected() || hasRouteActivity();
+  if (target === "fab-shop") return contractClaimed("send-first-shipment") || state.fabs.length > 1;
+  return true;
+}
+
+function featureLockReason(view) {
+  const target = viewAlias(view);
+  return {
+    inventory: "Open your first Print Bay output to reveal Inventory.",
+    melds: "Open your first Print Bay output to reveal Patterns.",
+    shop: "Create your first pattern to reveal Market.",
+    cities: "Build your first pattern to reveal the city map.",
+    profession: "Build your first pattern to reveal roles.",
+    shipments: "Choose Merchant or Routejack to reveal Dispatch.",
+    "fab-shop": "Open your first route job before expanding fab slots.",
+  }[target] || "This system unlocks through early contracts.";
+}
+
+function visibleProfileActions(actions) {
+  return actions.filter((action) => action.action || featureUnlocked(action.view));
+}
+
 function defaultReputation() {
   return {
     total: 0,
@@ -4356,6 +4426,11 @@ function goBack() {
 
 function setView(view) {
   if (!view) return;
+  if (!featureUnlocked(view)) {
+    addFeed("Access", featureLockReason(view), "data");
+    render();
+    return;
+  }
   if (view === state.activeView) {
     renderAndResetScroll();
     return;

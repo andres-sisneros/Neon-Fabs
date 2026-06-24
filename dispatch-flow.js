@@ -322,10 +322,13 @@
 
   syncActiveButtons = function syncActiveButtonsWithDispatchGate() {
     document.querySelectorAll("[data-view]").forEach((button) => {
-      const aliases = { item: "inventory", things: "inventory", findings: "fabs", mines: "fabs", "fab-detail": "fabs", home: "profile" };
-      const view = aliases[state.activeView] || state.activeView;
-      if (button.dataset.view === "shipments") button.hidden = !routeRoleActive();
-      button.classList.toggle("active", button.dataset.view === view);
+      const view = viewAlias(state.activeView);
+      const buttonView = viewAlias(button.dataset.view);
+      const isActive = buttonView === view;
+      const unlocked = featureUnlocked(button.dataset.view);
+      button.hidden = !unlocked && !isActive;
+      button.disabled = !unlocked && !isActive;
+      button.classList.toggle("active", isActive);
     });
   };
 

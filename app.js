@@ -47,43 +47,58 @@ function renderHeader() {
   const project = window.NEON_CONTENT_OVERRIDES?.project || {};
   const rep = reputationTotal();
   const title = reputationTitle(rep);
+  const stats = [
+    `<article class="stat-card wallet-stat"><span>Credits</span><strong>${formatCredits(state.credits)}</strong></article>`,
+    `<article class="stat-card rep-stat"><span>Reputation</span><strong>${rep.toLocaleString()}</strong></article>`,
+    `<article class="stat-card"><span>Power</span><strong>${formatPower(state.power)}</strong></article>`,
+    `<article class="stat-card"><span>Home City</span><strong>${homeDistrict().name}</strong></article>`,
+  ];
+  if (featureUnlocked("profession")) stats.push(`<article class="stat-card"><span>Role</span><strong>${currentRole().label}</strong></article>`);
+  if (featureUnlocked("melds")) stats.push(`<article class="stat-card"><span>Patterns</span><strong>${level()}/${melds.length}</strong></article>`);
+  if (featureUnlocked("fab-shop")) stats.push(`<article class="stat-card"><span>Fab Slots</span><strong>${state.fabs.length}/${MAX_ACTIVE_FABS}</strong></article>`);
+  if (featureUnlocked("contracts")) stats.push(`<article class="stat-card"><span>Contracts</span><strong>${claimableContracts().length} ready</strong></article>`);
   if (brandTitle) brandTitle.textContent = project.title || "Neon Fabs";
   if (brandSubtitle) brandSubtitle.textContent = project.subtitle || "Lowline testnet";
   if (walletSummary) walletSummary.textContent = `${formatCredits(state.credits)} | ${rep.toLocaleString()} Rep | ${state.chips} chip${state.chips === 1 ? "" : "s"}`;
   playerSummary.textContent = `${state.player} | ${title.label} | Home: ${homeDistrict().name} | Power: ${formatPower(state.power)}`;
   screenTitle.textContent = viewTitle();
   if (backButton) backButton.hidden = !state.viewHistory?.length;
-  quickStats.innerHTML = `
-    <article class="stat-card wallet-stat"><span>Credits</span><strong>${formatCredits(state.credits)}</strong></article>
-    <article class="stat-card rep-stat"><span>Reputation</span><strong>${rep.toLocaleString()}</strong></article>
-    <article class="stat-card"><span>Home City</span><strong>${homeDistrict().name}</strong></article>
-    <article class="stat-card"><span>Viewing</span><strong>${currentDistrict().name}</strong></article>
-    <article class="stat-card"><span>Role</span><strong>${currentRole().label}</strong></article>
-    <article class="stat-card"><span>Title</span><strong>${title.label}</strong></article>
-    <article class="stat-card"><span>Patterns</span><strong>${level()}/${melds.length}</strong></article>
-    <article class="stat-card"><span>Battery Cap</span><strong>${formatPower(batteryCapacity())}</strong></article>
-    <article class="stat-card"><span>Contracts</span><strong>${claimableContracts().length} ready</strong></article>`;
+  quickStats.innerHTML = stats.join("");
 }
 
 function renderRightPanel() {
   const filament = activeFilament();
   const scannerActive = hasActiveScanner();
   const rep = reputationTotal();
+  if (viewAlias(state.activeView) === "profile") {
+    rightPanel.innerHTML = `
+      <h2>Operator</h2>
+      <div class="side-metric"><span>Credits</span><strong>${formatCredits(state.credits)}</strong></div>
+      <div class="side-metric"><span>Reputation</span><strong>${rep.toLocaleString()}</strong></div>
+      <div class="side-metric"><span>Power</span><strong>${formatPower(state.power)}</strong></div>
+      <div class="side-metric"><span>Home</span><strong>${homeDistrict().name}</strong></div>`;
+    return;
+  }
+  const storageMetrics = featureUnlocked("inventory")
+    ? `<div class="side-metric"><span>Home Storage</span><strong>${inventoryLabel(state.homeCity)}</strong></div>
+    <div class="side-metric"><span>Viewed Storage</span><strong>${inventoryLabel(state.district)}</strong></div>`
+    : "";
+  const fabMetrics = featureUnlocked("fab-shop") || state.fabs.length > 1
+    ? `<div class="side-metric"><span>Home Fab Boost</span><strong>+${Math.round(HOME_CITY_RATE_BONUS * 100)}%</strong></div>
+    <div class="side-metric"><span>Fab Slots</span><strong>${state.fabs.length}/${MAX_ACTIVE_FABS}</strong></div>`
+    : "";
   rightPanel.innerHTML = `
     <h2>Account</h2>
     <div class="side-metric"><span>Credits</span><strong>${formatCredits(state.credits)}</strong></div>
     <div class="side-metric"><span>Reputation</span><strong>${rep.toLocaleString()}</strong></div>
     <div class="side-metric"><span>Title</span><strong>${reputationTitle(rep).label}</strong></div>
-    <div class="side-metric"><span>Chips</span><strong>${state.chips}</strong></div>
     <div class="side-metric"><span>Home City</span><strong>${homeDistrict().name}</strong></div>
     <div class="side-metric"><span>Viewing</span><strong>${currentDistrict().name}</strong></div>
     <div class="side-metric"><span>Battery</span><strong>${formatPower(state.power)}</strong></div>
     <div class="side-metric"><span>Capacity</span><strong>${formatPower(batteryCapacity())}</strong></div>
-    <div class="side-metric"><span>Home Storage</span><strong>${inventoryLabel(state.homeCity)}</strong></div>
-    <div class="side-metric"><span>Viewed Storage</span><strong>${inventoryLabel(state.district)}</strong></div>
-    <div class="side-metric"><span>Home Fab Boost</span><strong>+${Math.round(HOME_CITY_RATE_BONUS * 100)}%</strong></div>
-    <div class="side-metric"><span>Fab Slots</span><strong>${state.fabs.length}/${MAX_ACTIVE_FABS}</strong></div>
-    <div class="side-metric"><span>Contracts</span><strong>${completedContracts().length}/${contractCatalog.length}</strong></div>
+    ${storageMetrics}
+    ${fabMetrics}
+    ${featureUnlocked("contracts") ? `<div class="side-metric"><span>Contracts</span><strong>${completedContracts().length}/${contractCatalog.length}</strong></div>` : ""}
     <div class="side-metric"><span>Filament</span><strong>${filament ? `${rarityMeta[filament.rarity].label} +${Math.round(filament.amount * 100)}% ${formatPower((filament.expiresAt - Date.now()) / 1000)}` : "Inactive"}</strong></div>
     <div class="side-metric"><span>Scanner</span><strong>${scannerActive ? `${rarityMeta[state.routeScanQuality]?.label || "Active"} ${formatPower((state.routeScanUntil - Date.now()) / 1000)}` : "Inactive"}</strong></div>`;
 }
@@ -205,75 +220,49 @@ function profileActionButton(action, className = "") {
 }
 
 function renderProfile() {
-  const activeFab = state.fabs[0];
-  const activeFabRate = effectiveFabRate(activeFab);
   const filament = activeFilament();
   const rep = reputationTotal();
   const title = reputationTitle(rep);
+  const cityQueued = queuedOutputFor(state.district).length;
+  const inTransit = state.shipments.filter((shipment) => shipment.status === "in-transit").length;
+  const readyPatterns = readyMelds().length;
+  const detailCards = [
+    `<section class="panel"><h2>Battery</h2><div class="big-number">${formatPower(state.power)}</div><p class="muted">Cap ${formatPower(batteryCapacity())}</p></section>`,
+    featureUnlocked("melds") ? `<section class="panel"><h2>Patterns</h2><div class="big-number">${state.completed.length}/${melds.length}</div><p class="muted">${readyPatterns} ready</p></section>` : "",
+    `<section class="panel"><h2>Active Fabs</h2><div class="big-number">${state.fabs.length}/${MAX_ACTIVE_FABS}</div><p class="muted">${fabsForCity(state.district).length} in ${currentDistrict().name}</p></section>`,
+    featureUnlocked("profession") ? `<section class="panel"><h2>Role</h2><div class="big-number">${currentRole().label}</div><p class="muted">${professionLockReason() ? "Locked by route job" : "Neutral"}</p></section>` : "",
+    featureUnlocked("shipments") ? `<section class="panel"><h2>Dispatch</h2><div class="big-number">${inTransit}</div><p class="muted">Active route jobs</p></section>` : "",
+    `<section class="panel"><h2>Boosts</h2><div class="big-number">${filament || hasActiveScanner() ? "Active" : "Idle"}</div><p class="muted">${filament ? `${rarityMeta[filament.rarity].label} filament` : "No filament"}${hasActiveScanner() ? " + scanner" : ""}</p></section>`,
+  ].filter(Boolean).join("");
   if (!state.homeChosen) {
     mainPanel.innerHTML = renderFirstRunWelcome();
     return;
   }
   mainPanel.innerHTML = `
-    <section class="profile-hero">
-      <div class="avatar-card">
-        <div class="avatar-core"></div>
-      </div>
-      <div>
+    <section class="profile-hero profile-landing-hero">
+      ${renderCityPixelScene(currentDistrict(), { compact: true })}
+      <div class="profile-landing-copy">
         <p class="eyebrow">${title.label}</p>
         <h2>${state.player}</h2>
         <div class="profile-tags">
           <span class="pill">${rep.toLocaleString()} Rep</span>
-          <span class="pill">Home: ${homeDistrict().name}</span>
-          <span class="pill">Viewing: ${currentDistrict().name}</span>
+          <span class="pill">${homeDistrict().name}</span>
+          <span class="pill">${currentDistrict().name}</span>
+        </div>
+        <div class="profile-signal-grid">
+          <span><strong>${formatPower(state.power)}</strong><em>power</em></span>
+          <span><strong>${cityQueued}</strong><em>sealed</em></span>
+          ${featureUnlocked("melds") ? `<span><strong>${readyPatterns}</strong><em>ready</em></span>` : ""}
+          <span><strong>${claimableContracts().length}</strong><em>contracts</em></span>
         </div>
       </div>
     </section>
     ${renderProfileCommandDeck()}
-    <div class="grid three profile-grid">
-      <section class="panel rep-summary-card">
-        <h2>Reputation</h2>
-        <div class="big-number">${rep.toLocaleString()}</div>
-        <p class="muted">${title.flavor}</p>
-      </section>
-      <section class="panel">
-        <h2>Battery</h2>
-        <div class="big-number">${formatPower(state.power)}</div>
-        <p class="muted">Cap ${formatPower(batteryCapacity())}</p>
-      </section>
-      <section class="panel">
-        <h2>Patterns</h2>
-        <div class="big-number">${state.completed.length}/${melds.length}</div>
-        <p class="muted">${readyMelds().length} ready</p>
-      </section>
-      <section class="panel">
-        <h2>Active Fabs</h2>
-        <div class="big-number">${state.fabs.length}/${MAX_ACTIVE_FABS}</div>
-        <p class="muted">${activeFabRate.toFixed(2)} g/hr starter</p>
-      </section>
-      <section class="panel">
-        <h2>Profession</h2>
-        <div class="big-number">${currentRole().label}</div>
-        <p class="muted">${professionLockReason() ? "Locked by route job" : "Neutral"}</p>
-      </section>
-      <section class="panel">
-        <h2>Dispatch</h2>
-        <div class="big-number">${state.shipments.filter((shipment) => shipment.status === "in-transit").length}</div>
-        <p class="muted">Active route jobs</p>
-      </section>
-      <section class="panel">
-        <h2>Contracts</h2>
-        <div class="big-number">${claimableContracts().length}</div>
-        <p class="muted">${claimableContracts().length ? "Rewards are ready to claim." : `${completedContracts().length}/${contractCatalog.length} completed.`}</p>
-        <button type="button" data-view="contracts">Open Contracts</button>
-      </section>
-      <section class="panel">
-        <h2>Boosts</h2>
-        <div class="big-number">${filament || hasActiveScanner() ? "Active" : "Idle"}</div>
-        <p class="muted">${filament ? `${rarityMeta[filament.rarity].label} filament` : "No filament"}${hasActiveScanner() ? " + scanner" : ""}</p>
-      </section>
-    </div>
-    ${renderReputationBoard()}`;
+    <details class="profile-details-drawer">
+      <summary><span>Operator Details</span><strong>Stats and reputation board</strong></summary>
+      <div class="grid three profile-grid">${detailCards}</div>
+      ${renderReputationBoard()}
+    </details>`;
 }
 
 function renderFindings() {
@@ -2914,9 +2903,13 @@ function executeActionSheet(action) {
 
 function syncActiveButtons() {
   document.querySelectorAll("[data-view]").forEach((button) => {
-    const aliases = { item: "inventory", things: "inventory", findings: "fabs", mines: "fabs", "fab-detail": "fabs", home: "profile" };
-    const view = aliases[state.activeView] || state.activeView;
-    button.classList.toggle("active", button.dataset.view === view);
+    const view = viewAlias(state.activeView);
+    const buttonView = viewAlias(button.dataset.view);
+    const isActive = buttonView === view;
+    const unlocked = featureUnlocked(button.dataset.view);
+    button.hidden = !unlocked && !isActive;
+    button.disabled = !unlocked && !isActive;
+    button.classList.toggle("active", buttonView === view);
   });
 }
 

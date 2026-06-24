@@ -147,23 +147,23 @@ const NEON_CREATIVE_OVERRIDES = {
   },
 
   contracts: {
-    "collect-output-5": {
+    "collect-first-print-run": {
       chain: "New Operator",
       group: "1. Fab Operations",
       title: "First Print Run",
-      description: "Open five Print Bay outputs from any fab in the city you are viewing.",
+      description: "Open the first four sealed prints from your home city's Print Bay.",
+    },
+    "fuse-first-meld": {
+      chain: "New Operator",
+      group: "2. Patterns",
+      title: "Create A Stable Pattern",
+      description: "Use your first print run to create one pattern in your home city.",
     },
     "market-sell-3": {
       chain: "New Operator",
-      group: "2. Market",
+      group: "3. Market",
       title: "Find Local Demand",
       description: "Sell three items to local bids. Bulk sales count.",
-    },
-    "recycle-5": {
-      chain: "New Operator",
-      group: "3. Inventory",
-      title: "Clear The Bench",
-      description: "Recycle five unwanted items to make room for stronger output.",
     },
     "market-buy-1": {
       chain: "New Operator",
@@ -171,27 +171,21 @@ const NEON_CREATIVE_OVERRIDES = {
       title: "Source A Missing Part",
       description: "Buy one item from any city market listing.",
     },
-    "fuse-first-meld": {
-      chain: "New Operator",
-      group: "5. Melds",
-      title: "Fuse A Stable Pattern",
-      description: "Create one meld in your home city.",
-    },
     "send-first-shipment": {
       chain: "New Operator",
-      group: "6. Dispatch",
+      group: "5. Dispatch",
       title: "Open A Route",
       description: "Send one cargo shipment from Dispatch.",
     },
     "second-fab-slot": {
       chain: "New Operator",
-      group: "7. Expansion",
+      group: "6. Expansion",
       title: "Run A Second Fab",
       description: "Own or rent a second active fab when you are ready to expand.",
     },
     "equip-first-gear": {
       chain: "New Operator",
-      group: "8. Fabs",
+      group: "7. Fabs",
       title: "Tune A Machine",
       description: "Equip one gear upgrade onto a fab.",
     },

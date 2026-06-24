@@ -58,6 +58,45 @@ test("fresh home choice reads like a game start", async ({ page }) => {
   await expect(page.locator(".operator-console")).toContainText("Chrome Pier");
 });
 
+test("new operator systems reveal as milestones are reached", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("neon-fabs.intro.v1.seen", "yes");
+  });
+  await page.goto("/index.html?intro=0#view=profile&city=chrome-pier");
+  await page.waitForFunction(() => window.state && window.render);
+  await page.getByRole("button", { name: "Start In Chrome Pier" }).click();
+
+  await expect(page.locator('.side-nav [data-view="profile"]')).toBeVisible();
+  await expect(page.locator('.side-nav [data-view="contracts"]')).toBeVisible();
+  await expect(page.locator('.side-nav [data-view="fabs"]')).toBeVisible();
+  await expect(page.locator('.side-nav [data-view="inventory"]')).toBeHidden();
+  await expect(page.locator('.side-nav [data-view="shop"]')).toBeHidden();
+  await expect(page.locator('.side-nav [data-view="melds"]')).toBeHidden();
+  await expect(page.locator('.side-nav [data-view="cities"]')).toBeHidden();
+  await expect(page.locator('.side-nav [data-view="fab-shop"]')).toBeHidden();
+
+  await page.evaluate(() => claimOutput());
+  await expect(page.locator('.side-nav [data-view="inventory"]')).toBeVisible();
+  await expect(page.locator('.side-nav [data-view="melds"]')).toBeVisible();
+  await expect(page.locator('.side-nav [data-view="shop"]')).toBeHidden();
+
+  await page.evaluate(() => {
+    claimContract("collect-first-print-run");
+    createMeld("Common Starter Meld");
+  });
+  await expect(page.locator('.side-nav [data-view="shop"]')).toBeVisible();
+  await expect(page.locator('.side-nav [data-view="cities"]')).toBeVisible();
+
+  await page.evaluate(() => {
+    claimContract("fuse-first-meld");
+    state.contractStats.itemsSold = 3;
+    claimContract("market-sell-3");
+    state.contractStats.itemsBought = 1;
+    claimContract("market-buy-1");
+  });
+  await expect(page.locator('.side-nav [data-view="profession"]')).toBeVisible();
+});
+
 test("print bay reveal leads into backpack inventory", async ({ page }) => {
   await openGame(page, "fabs", "drifter");
   await page.evaluate(() => {
@@ -129,6 +168,11 @@ test("dispatch tab and wizard follow role state", async ({ page }) => {
 
 test("merchant can load mixed cargo and send shipment", async ({ page }) => {
   await openGame(page, "shipments", "merchant");
+  await page.evaluate(() => {
+    addItem("Common Starter Component A", 1, state.district, true);
+    addItem("Common Starter Component B", 1, state.district, true);
+    render();
+  });
 
   await page.getByRole("button", { name: "Next" }).click();
   await expect(page.getByText("Choose Vehicle")).toBeVisible();
@@ -166,6 +210,12 @@ test("admin route activity shows player jobs, not npc traffic controls", async (
 
 test("melds page uses compact visual set cards", async ({ page }) => {
   await openGame(page, "melds", "drifter");
+  await page.evaluate(() => {
+    addItem("Common Starter Component A", 2, state.homeCity, true);
+    addItem("Common Starter Component B", 1, state.homeCity, true);
+    addItem("Common Starter Component C", 1, state.homeCity, true);
+    render();
+  });
 
   await expect(page.getByText("Meld Sets")).toBeVisible();
   await expect(page.locator(".meld-card")).toHaveCount(5);
@@ -237,6 +287,7 @@ test("route encounters roll during travel and save a battle replay", async ({ pa
   await openGame(page, "shipments", "merchant");
 
   await page.evaluate(() => {
+    addItem("Common Starter Component A", 1, state.district, true);
     state.routeEncounterCatalog = normalizeRouteEncounterCatalog([{
       id: "test-road-ambush",
       role: "merchant",
@@ -271,6 +322,7 @@ test("custom npc unit can drive a route battle with core stats", async ({ page }
   await openGame(page, "shipments", "merchant");
 
   const result = await page.evaluate(() => {
+    addItem("Common Starter Component A", 1, state.district, true);
     state.routeEncounterCatalog = normalizeRouteEncounterCatalog([{
       id: "test-route-hazard",
       role: "merchant",

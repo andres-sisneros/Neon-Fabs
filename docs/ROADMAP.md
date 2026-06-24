@@ -6,9 +6,10 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 
 1. Stabilize the first-session loop on GitHub Pages.
 2. Make reputation the visible long-term player goal.
-3. Make content authoring easy through `content/creative-overrides.js` and `design/`.
-4. Reduce code/context sprawl before adding larger systems.
-5. Keep Dispatch useful, but avoid making route combat the main learning burden.
+3. Keep early UI progressively revealed instead of showing every system at once.
+4. Make content authoring easy through `content/creative-overrides.js` and `design/`.
+5. Reduce code/context sprawl before adding larger systems.
+6. Keep Dispatch useful, but avoid making route combat the main learning burden.
 
 ## Next Build Slices
 
@@ -25,21 +26,27 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 - Add city and role boards without overwhelming first-session UI.
 - Decide final canon name for "melds" before polishing public profile language.
 
-### 3. Creative Starter Set
+### 3. Progressive Reveal
+
+- Keep new surfaces hidden until their related contract or role milestone.
+- Add a lightweight optional systems drawer later if playtesters want to know what exists.
+- Move public-release debug tools behind an admin/debug mode.
+
+### 4. Creative Starter Set
 
 - Rename Starter Fab components.
 - Rename starter melds.
 - Add city flavor hooks.
 - Add item flavor only where it appears naturally in detail views.
 
-### 4. Dispatch Simplification
+### 5. Dispatch Simplification
 
 - Keep role-specific dispatch surfaces.
 - Make Merchant route selection, vehicle selection, and cargo loading feel less form-like.
 - Keep route encounters PvE and readable.
 - Move advanced battle tuning to Admin.
 
-### 5. Code Modularization
+### 6. Code Modularization
 
 - Extract low-risk pure helpers first.
 - Avoid broad rewrites.

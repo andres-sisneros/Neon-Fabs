@@ -41,7 +41,8 @@ The player should feel like an operator learning a small machine economy. The UI
 - Added a first-load intro overlay in `ui-intro.js` to establish this as a game world before the dashboard appears.
 - Added CC0 city-feed art treatment to the intro and first-run home-city cards.
 - Added a focused Print Bay reveal, backpack-first inventory layout, and next-meld focus card.
-- Left state, save shape, fab output, inventory, market, and dispatch behavior unchanged.
+- Added guaranteed first-run Starter Fab output for the first common pattern.
+- Simplified the Profile landing page so deeper account stats live behind an optional details drawer.
 
 ## Acceptance Checklist
 

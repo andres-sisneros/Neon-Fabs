@@ -16,28 +16,28 @@ Use this checklist for quick manual runs after UI or core-loop changes. The goal
 
 - [ ] Open Fabs.
 - [ ] Confirm only local city fabs appear as local operations.
-- [ ] Advance time or wait until sealed prints exist.
+- [ ] Confirm a fresh profile starts with four sealed starter prints.
 - [ ] Open Print Bay.
 - [ ] Confirm results are readable and sorted by rarity.
 - [ ] Confirm inventory receives only what fits.
 - [ ] Confirm blocked collection does not recharge battery.
+- [ ] Confirm Patterns unlock after the first collection.
 
 ## Inventory And Market
 
 - [ ] Open Inventory in the current city.
 - [ ] Filter by category, rarity, and search.
 - [ ] Sell one item to a local bid.
-- [ ] Recycle one low-value item.
 - [ ] Open the item's market book.
 - [ ] Clear filters from empty results.
 
 ## Melds
 
 - [ ] Open Melds in the home city.
-- [ ] Confirm missing parts, local asks, best asks, and owned locations are visible.
-- [ ] Buy or move a missing ingredient when available.
-- [ ] Fuse one ready meld.
+- [ ] Confirm the first common pattern is ready after the guaranteed first collection.
+- [ ] Fuse one ready pattern.
 - [ ] Confirm battery capacity increases by one hour.
+- [ ] Confirm Market, Map, and Roles unlock after the first pattern.
 
 ## Second Fab
 

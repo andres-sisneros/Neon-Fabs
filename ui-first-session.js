@@ -73,21 +73,20 @@ function renderFirstRunWelcome() {
 function renderProfileCommandDeck() {
   const cityName = currentDistrict().name;
   const cityQueue = queuedOutputFor(state.district).length;
-  const remoteQueue = queuedOutputOutside(state.district).length;
-  const inTransit = state.shipments.filter((shipment) => shipment.status === "in-transit").length;
-  const readyContractCount = claimableContracts().length;
   const cityFabs = fabsForCity(state.district);
   const printBayAction = cityQueue
     ? { label: "Print Bay", view: "fabs" }
     : { label: "Fabs", view: "fabs" };
-  const secondary = [
+  const secondary = visibleProfileActions([
     printBayAction,
     { label: "Contracts", view: "contracts" },
     { label: "Inventory", view: "inventory" },
     { label: "Market", view: "shop" },
-    { label: "Melds", view: "melds" },
-    { label: "Dispatch", view: "shipments" },
-  ];
+    { label: "Patterns", view: "melds" },
+    routeRoleSelected() ? { label: "Dispatch", view: "shipments" } : { label: "Roles", view: "profession" },
+    { label: "Map", view: "cities" },
+    { label: "Fab Shop", view: "fab-shop" },
+  ]);
 
   return `<section class="command-deck operator-console">
     <div class="command-main">
@@ -96,16 +95,8 @@ function renderProfileCommandDeck() {
       <div class="console-lines">
         <span>Power <strong>${formatPower(state.power)}</strong></span>
         <span>Local fabs <strong>${cityFabs.length}</strong></span>
-        <span>Storage <strong>${inventoryLabel(state.district)}</strong></span>
+        <span>Prints <strong>${cityQueue}</strong></span>
       </div>
-    </div>
-    <div class="command-status">
-      <div class="side-metric"><span>Print Bay</span><strong>${cityQueue} sealed</strong></div>
-      <div class="side-metric"><span>Elsewhere</span><strong>${remoteQueue} sealed</strong></div>
-      <div class="side-metric"><span>Storage</span><strong>${inventoryLabel(state.district)}</strong></div>
-      <div class="side-metric"><span>Routes</span><strong>${inTransit} active</strong></div>
-      <div class="side-metric"><span>Contracts</span><strong>${readyContractCount} ready</strong></div>
-      <div class="side-metric"><span>Ready Melds</span><strong>${readyMelds().length}</strong></div>
     </div>
     <div class="quick-command-row">
       ${secondary.map((action) => profileActionButton(action)).join("")}
@@ -196,7 +187,7 @@ function renderCollectedOutput(cityId = state.district) {
     <div class="collection-grid">${rows}</div>
     <div class="button-row reveal-actions">
       <button type="button" data-view="inventory">Review Inventory</button>
-      <button type="button" data-view="shop">Open Market</button>
+      ${featureUnlocked("shop") ? `<button type="button" data-view="shop">Open Market</button>` : ""}
     </div>
   </section>`;
 }

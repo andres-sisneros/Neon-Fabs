@@ -18,6 +18,8 @@ Profile should not show persistent Print Bay result history. Print Bay results b
 
 The Fabs page is organized around the city being viewed. Its first surface shows whether that city's Print Bay has sealed prints, whether storage blocks collection, how many prints fit now, how many will stay sealed, and which local machines are active. Full owned-fab management is still available, but it is secondary to the current-city operation.
 
+The interface now uses progressive reveal. A new profile starts with only the surfaces needed to begin: Profile, Contracts, and Fabs after home selection. Inventory and Patterns unlock after the first Print Bay collection. Market, Map, and Roles unlock after the first pattern is completed. Dispatch and Fab Shop unlock later as the player touches route and expansion loops. Admin and Wiki remain visible during prototype development.
+
 Future atmosphere should come from city-specific visual treatment, ambient state, and server-time effects such as day/night cycles rather than persistent explanatory paragraphs.
 
 ## Prototype Architecture
@@ -69,7 +71,7 @@ Contracts are short operator jobs that reward normal play. They are not meant to
 
 The first contract chain is New Operator. It reveals one job at a time, and claiming the current reward unlocks the next contract. Claimed contracts remain visible as history, while the next locked contract appears only as a teaser.
 
-Current contract progress is tracked for collected output, active fab count, market buys and sells, recycled items, meld fusion, equipment installs, boost use, and shipments sent. Completed contracts can be claimed for credits or chips from the Contracts page. Early rewards are tuned so the first print-run payout can rent an early second fab.
+Current contract progress is tracked for collected output, active fab count, market buys and sells, recycled items, meld fusion, equipment installs, boost use, and shipments sent. Completed contracts can be claimed for credits or chips from the Contracts page. The New Operator chain now teaches first collection, first pattern creation, then market and route play.
 
 ## Rarities
 
