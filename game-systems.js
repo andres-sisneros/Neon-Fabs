@@ -134,6 +134,7 @@ function seedState(nextState) {
   nextState.routeScanUntil = Math.max(0, Number(nextState.routeScanUntil || 0));
   nextState.routeScanQuality = rarityOrder.includes(nextState.routeScanQuality) ? nextState.routeScanQuality : null;
   nextState.completed = (nextState.completed || []).filter((name) => melds.some((meld) => meld.name === name));
+  nextState.reputation = normalizeReputation(nextState.reputation, nextState.completed);
   nextState.dropRates = { ...defaultDropRates(), ...(nextState.dropRates || {}) };
   nextState.noItemWeight = Number.isFinite(Number(nextState.noItemWeight)) ? Number(nextState.noItemWeight) : defaultNoItemWeight();
   nextState.selectedMeldType = ["starter", "food"].includes(nextState.selectedMeldType) ? nextState.selectedMeldType : "starter";
@@ -374,6 +375,109 @@ function queuedOutputOutside(cityId = state.district) {
 
 function level() {
   return state.completed.length;
+}
+
+function defaultReputation() {
+  return {
+    total: 0,
+    tracks: Object.fromEntries(Object.keys(reputationTracks).map((track) => [track, 0])),
+    history: [],
+  };
+}
+
+function reputationForMeld(meld) {
+  if (!meld) return 0;
+  return Math.max(0, Number(REP_MELD_REWARDS[meld.rarity] || 0));
+}
+
+function reputationFromCompletedList(completed = []) {
+  return completed.reduce((next, name) => {
+    const meld = melds.find((candidate) => candidate.name === name);
+    next.tracks.collection += reputationForMeld(meld);
+    next.total += reputationForMeld(meld);
+    return next;
+  }, defaultReputation());
+}
+
+function normalizeReputation(reputation = null, completed = []) {
+  const derived = reputationFromCompletedList(completed);
+  const normalized = defaultReputation();
+  Object.keys(normalized.tracks).forEach((track) => {
+    const saved = Number(reputation?.tracks?.[track] || 0);
+    normalized.tracks[track] = Math.max(saved, track === "collection" ? derived.tracks.collection : 0);
+  });
+  normalized.total = Math.max(
+    Number(reputation?.total || 0),
+    Object.values(normalized.tracks).reduce((sum, value) => sum + Math.max(0, Number(value || 0)), 0),
+  );
+  normalized.history = Array.isArray(reputation?.history)
+    ? reputation.history
+      .filter((entry) => entry && entry.reason && Number(entry.amount || 0) > 0)
+      .slice(0, 12)
+    : [];
+  return normalized;
+}
+
+function reputationTotal() {
+  if (!state.reputation) state.reputation = normalizeReputation(null, state.completed || []);
+  return Math.max(0, Number(state.reputation.total || 0));
+}
+
+function reputationTitle(score = reputationTotal()) {
+  return reputationTitles
+    .filter((title) => score >= title.min)
+    .at(-1) || reputationTitles[0];
+}
+
+function nextReputationTitle(score = reputationTotal()) {
+  return reputationTitles.find((title) => score < title.min) || null;
+}
+
+function reputationProgress(score = reputationTotal()) {
+  const current = reputationTitle(score);
+  const next = nextReputationTitle(score);
+  if (!next) return { current, next: null, percent: 100, remaining: 0 };
+  const span = Math.max(1, next.min - current.min);
+  return {
+    current,
+    next,
+    percent: Math.max(0, Math.min(100, ((score - current.min) / span) * 100)),
+    remaining: Math.max(0, next.min - score),
+  };
+}
+
+function awardReputation(track, amount, reason, options = {}) {
+  const safeTrack = reputationTracks[track] ? track : "collection";
+  const points = Math.max(0, Math.round(Number(amount || 0)));
+  if (!points) return;
+  state.reputation = normalizeReputation(state.reputation, state.completed || []);
+  state.reputation.tracks[safeTrack] = Math.max(0, Number(state.reputation.tracks[safeTrack] || 0)) + points;
+  state.reputation.total = reputationTotal() + points;
+  state.reputation.history.unshift({
+    id: `rep-${Date.now()}-${state.reputation.history.length}`,
+    track: safeTrack,
+    amount: points,
+    reason,
+    rarity: options.rarity || null,
+    cityId: options.cityId || state.homeCity,
+    at: Date.now(),
+  });
+  state.reputation.history = state.reputation.history.slice(0, 12);
+  addFeed("Rep", `+${points} ${reason}`, options.iconName || "data");
+}
+
+function localReputationBoard() {
+  const playerEntry = {
+    name: state.player,
+    rep: reputationTotal(),
+    title: reputationTitle().label,
+    city: homeDistrict().name,
+    track: "You",
+    player: true,
+  };
+  return [...reputationBoardSeed, playerEntry]
+    .sort((a, b) => b.rep - a.rep || a.name.localeCompare(b.name))
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
 
 function completedContracts() {
@@ -4036,6 +4140,11 @@ function createMeld(name, free = false) {
   if (!meld || state.completed.includes(name)) return;
   if (!free && !canMeld(meld)) return;
   if (!free) Object.entries(meld.recipe).forEach(([itemName, count]) => removeItem(itemName, count, state.homeCity));
+  awardReputation("collection", reputationForMeld(meld), meldLabel(meld), {
+    rarity: meld.rarity,
+    cityId: state.homeCity,
+    iconName: itemByName(Object.keys(meld.recipe)[0]).iconName,
+  });
   state.completed.push(name);
   if (!free) trackContract("meldsFused", 1);
   state.fuseAnimation = { name: meld.name, rarity: meld.rarity };

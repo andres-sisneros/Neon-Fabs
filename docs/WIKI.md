@@ -48,6 +48,21 @@ Random is the default print pattern for multi-pattern fabs. It prints across the
 
 The Print Bay holds sealed fab output for each city. Opening the Print Bay moves prints into the city inventory when there is space and recharges the battery to max capacity. If inventory is full, the player should make space before opening it again.
 
+## Reputation
+
+Reputation is the long-term player goal. Credits, items, fabs, routes, and completed collections are all tools for becoming known in the world.
+
+The current first slice awards reputation for completing meld patterns in the home city. Higher-rarity completions award more reputation. Total reputation gives the player a visible title on the Profile page and places the player on a local reputation board beside placeholder NPC operators.
+
+Current reputation tracks:
+
+- Collection Rep: completed meld patterns and future set-completion goals.
+- Market Rep: planned for profitable trades, fulfilled bids, and supplying scarce goods.
+- Route Rep: planned for completed deliveries, route clears, and successful routejack runs.
+- Fab Rep: planned for equipment mastery, rare output records, and machine optimization.
+
+The term "meld" is still provisional. Mechanically, these are completed collection patterns that turn printed components into permanent operator status, battery capacity, and reputation.
+
 ## Contracts
 
 Contracts are short operator jobs that reward normal play. They are not meant to replace the sandbox economy; they are a lightweight guidance layer so a new player has useful next steps while learning fabs, city inventories, markets, melds, equipment, and dispatch.
@@ -99,6 +114,8 @@ Melds are not normal inventory items. The current design direction is that chang
 Meld fabs create components. Components are not gear and are not directly equipped. Their main purpose is to be traded, transported, collected, and fused.
 
 To create a meld, the required components must be in the home city. Each completed meld currently adds +1 hour to max battery capacity.
+
+Each completed meld also grants Collection Rep. This makes meld creation the first visible reputation path while later role systems are still being simplified.
 
 The Melds page now shows each recipe component with home-city progress, home market ask, best visible ask across cities, and where owned copies are stored. Buttons can open the order book, buy from the home city, buy the best visible listing, or jump to the source city inventory with the shipment form prepared for moving that ingredient home.
 

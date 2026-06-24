@@ -45,19 +45,22 @@ function viewTitle() {
 
 function renderHeader() {
   const project = window.NEON_CONTENT_OVERRIDES?.project || {};
+  const rep = reputationTotal();
+  const title = reputationTitle(rep);
   if (brandTitle) brandTitle.textContent = project.title || "Neon Fabs";
   if (brandSubtitle) brandSubtitle.textContent = project.subtitle || "Lowline testnet";
-  if (walletSummary) walletSummary.textContent = `${formatCredits(state.credits)} | ${state.chips} chip${state.chips === 1 ? "" : "s"}`;
-  playerSummary.textContent = `${state.player} (${level()}) | Home: ${homeDistrict().name} | Power: ${formatPower(state.power)}`;
+  if (walletSummary) walletSummary.textContent = `${formatCredits(state.credits)} | ${rep.toLocaleString()} Rep | ${state.chips} chip${state.chips === 1 ? "" : "s"}`;
+  playerSummary.textContent = `${state.player} | ${title.label} | Home: ${homeDistrict().name} | Power: ${formatPower(state.power)}`;
   screenTitle.textContent = viewTitle();
   if (backButton) backButton.hidden = !state.viewHistory?.length;
   quickStats.innerHTML = `
     <article class="stat-card wallet-stat"><span>Credits</span><strong>${formatCredits(state.credits)}</strong></article>
-    <article class="stat-card"><span>Chips</span><strong>${state.chips}</strong></article>
+    <article class="stat-card rep-stat"><span>Reputation</span><strong>${rep.toLocaleString()}</strong></article>
     <article class="stat-card"><span>Home City</span><strong>${homeDistrict().name}</strong></article>
     <article class="stat-card"><span>Viewing</span><strong>${currentDistrict().name}</strong></article>
     <article class="stat-card"><span>Role</span><strong>${currentRole().label}</strong></article>
-    <article class="stat-card"><span>Meld Level</span><strong>${level()}</strong></article>
+    <article class="stat-card"><span>Title</span><strong>${title.label}</strong></article>
+    <article class="stat-card"><span>Patterns</span><strong>${level()}/${melds.length}</strong></article>
     <article class="stat-card"><span>Battery Cap</span><strong>${formatPower(batteryCapacity())}</strong></article>
     <article class="stat-card"><span>Contracts</span><strong>${claimableContracts().length} ready</strong></article>`;
 }
@@ -65,9 +68,12 @@ function renderHeader() {
 function renderRightPanel() {
   const filament = activeFilament();
   const scannerActive = hasActiveScanner();
+  const rep = reputationTotal();
   rightPanel.innerHTML = `
     <h2>Account</h2>
     <div class="side-metric"><span>Credits</span><strong>${formatCredits(state.credits)}</strong></div>
+    <div class="side-metric"><span>Reputation</span><strong>${rep.toLocaleString()}</strong></div>
+    <div class="side-metric"><span>Title</span><strong>${reputationTitle(rep).label}</strong></div>
     <div class="side-metric"><span>Chips</span><strong>${state.chips}</strong></div>
     <div class="side-metric"><span>Home City</span><strong>${homeDistrict().name}</strong></div>
     <div class="side-metric"><span>Viewing</span><strong>${currentDistrict().name}</strong></div>
@@ -152,6 +158,46 @@ function readyMelds() {
   return melds.filter((meld) => !state.completed.includes(meld.name) && canMeld(meld));
 }
 
+function renderReputationBoard() {
+  const rep = reputationTotal();
+  const progress = reputationProgress(rep);
+  const board = localReputationBoard();
+  const playerRank = board.find((entry) => entry.player)?.rank || board.length;
+  const visibleBoard = board.slice(0, 6);
+  const trackRows = Object.entries(reputationTracks)
+    .map(([id, track]) => `<div class="side-metric"><span>${track.shortLabel}</span><strong>${Math.round(state.reputation?.tracks?.[id] || 0).toLocaleString()}</strong></div>`)
+    .join("");
+  const history = (state.reputation?.history || [])
+    .slice(0, 4)
+    .map((entry) => `<div class="rep-history-row"><span>+${entry.amount} ${reputationTracks[entry.track]?.shortLabel || "Rep"}</span><strong>${entry.reason}</strong></div>`)
+    .join("");
+  return `<section class="panel reputation-panel">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">Street Reputation</p>
+        <h2>${progress.current.label}</h2>
+      </div>
+      <span class="pill">Rank ${playerRank}</span>
+    </div>
+    <p class="muted">${progress.current.flavor}</p>
+    <div class="rep-total-row">
+      <strong>${rep.toLocaleString()} Rep</strong>
+      <span>${progress.next ? `${progress.remaining.toLocaleString()} to ${progress.next.label}` : "Top title reached"}</span>
+    </div>
+    <div class="capacity-bar reputation-progress" aria-label="Reputation progress"><span style="width:${progress.percent}%"></span></div>
+    <div class="fab-metrics reputation-tracks">${trackRows}</div>
+    <div class="reputation-board">
+      ${visibleBoard.map((entry) => `<div class="reputation-row ${entry.player ? "player" : ""}">
+        <span>#${entry.rank}</span>
+        <strong>${entry.name}</strong>
+        <em>${entry.title}</em>
+        <b>${entry.rep.toLocaleString()}</b>
+      </div>`).join("")}
+    </div>
+    ${history ? `<div class="rep-history"><h3>Recent Rep</h3>${history}</div>` : ""}
+  </section>`;
+}
+
 function profileActionButton(action, className = "") {
   if (!action) return "";
   const dataAttr = action.action ? `data-action="${action.action}"` : `data-view="${action.view || "profile"}"`;
@@ -162,6 +208,8 @@ function renderProfile() {
   const activeFab = state.fabs[0];
   const activeFabRate = effectiveFabRate(activeFab);
   const filament = activeFilament();
+  const rep = reputationTotal();
+  const title = reputationTitle(rep);
   if (!state.homeChosen) {
     mainPanel.innerHTML = renderFirstRunWelcome();
     return;
@@ -172,9 +220,10 @@ function renderProfile() {
         <div class="avatar-core"></div>
       </div>
       <div>
-        <p class="eyebrow">Local operator</p>
+        <p class="eyebrow">${title.label}</p>
         <h2>${state.player}</h2>
         <div class="profile-tags">
+          <span class="pill">${rep.toLocaleString()} Rep</span>
           <span class="pill">Home: ${homeDistrict().name}</span>
           <span class="pill">Viewing: ${currentDistrict().name}</span>
         </div>
@@ -182,13 +231,18 @@ function renderProfile() {
     </section>
     ${renderProfileCommandDeck()}
     <div class="grid three profile-grid">
+      <section class="panel rep-summary-card">
+        <h2>Reputation</h2>
+        <div class="big-number">${rep.toLocaleString()}</div>
+        <p class="muted">${title.flavor}</p>
+      </section>
       <section class="panel">
         <h2>Battery</h2>
         <div class="big-number">${formatPower(state.power)}</div>
         <p class="muted">Cap ${formatPower(batteryCapacity())}</p>
       </section>
       <section class="panel">
-        <h2>Melds</h2>
+        <h2>Patterns</h2>
         <div class="big-number">${state.completed.length}/${melds.length}</div>
         <p class="muted">${readyMelds().length} ready</p>
       </section>
@@ -218,7 +272,8 @@ function renderProfile() {
         <div class="big-number">${filament || hasActiveScanner() ? "Active" : "Idle"}</div>
         <p class="muted">${filament ? `${rarityMeta[filament.rarity].label} filament` : "No filament"}${hasActiveScanner() ? " + scanner" : ""}</p>
       </section>
-    </div>`;
+    </div>
+    ${renderReputationBoard()}`;
 }
 
 function renderFindings() {

@@ -25,6 +25,39 @@ const rarityMeta = {
 
 const rarityOrder = ["green", "blue", "gold", "purple", "orange"];
 
+const REP_MELD_REWARDS = {
+  green: 10,
+  blue: 25,
+  gold: 60,
+  purple: 160,
+  orange: 400,
+};
+
+const reputationTracks = {
+  collection: { label: "Collection Rep", shortLabel: "Collection" },
+  market: { label: "Market Rep", shortLabel: "Market" },
+  route: { label: "Route Rep", shortLabel: "Routes" },
+  fab: { label: "Fab Rep", shortLabel: "Fabs" },
+};
+
+const reputationTitles = [
+  { min: 0, label: "Unknown Signal", flavor: "A new handle on the local mesh." },
+  { min: 10, label: "Local Name", flavor: "People have started to recognize your work." },
+  { min: 50, label: "Street Verified", flavor: "Your output has a traceable reputation." },
+  { min: 150, label: "District Known", flavor: "Your home city knows your handle." },
+  { min: 400, label: "City Figure", flavor: "Your prints and deals move city gossip." },
+  { min: 900, label: "Network Famous", flavor: "Your rep travels faster than your cargo." },
+  { min: 1800, label: "Mythic Operator", flavor: "Your name is part of the network folklore." },
+];
+
+const reputationBoardSeed = [
+  { name: "Glass Nomad", rep: 860, title: "City Figure", city: "Vanta Arcology", track: "Routes" },
+  { name: "Orchid Proxy", rep: 420, title: "City Figure", city: "Orchid Sprawl", track: "Collection" },
+  { name: "Patch Saint", rep: 210, title: "District Known", city: "Helix Quay", track: "Fabs" },
+  { name: "Chrome Yara", rep: 95, title: "Street Verified", city: "Chrome Pier", track: "Market" },
+  { name: "Lowline Echo", rep: 35, title: "Local Name", city: "Lowline", track: "Collection" },
+];
+
 const defaultNoItemWeight = () => Object.values(rarityMeta).reduce((sum, meta) => sum + meta.weight, 0);
 
 const fabTypeLabels = {
@@ -1380,6 +1413,16 @@ const defaultState = () => ({
   fabOutputHistory: {},
   contractStats: defaultContractStats(),
   claimedContracts: [],
+  reputation: {
+    total: 0,
+    tracks: {
+      collection: 0,
+      market: 0,
+      route: 0,
+      fab: 0,
+    },
+    history: [],
+  },
   fuseAnimation: null,
   selectedFabId: "fab-1",
   activeEquipmentSlot: "motherboard",

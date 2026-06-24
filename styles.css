@@ -536,6 +536,16 @@ h3 {
   color: var(--green);
 }
 
+.rep-stat {
+  border-color: rgba(255, 212, 71, 0.28);
+  background: linear-gradient(135deg, rgba(255, 212, 71, 0.11), rgba(18, 24, 36, 0.88));
+}
+
+.rep-stat strong,
+.rep-summary-card .big-number {
+  color: var(--gold);
+}
+
 .content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(290px, 340px);
@@ -1547,6 +1557,86 @@ h3 {
 
 .profile-grid {
   margin-top: 14px;
+}
+
+.reputation-panel {
+  margin-top: 14px;
+  border-color: rgba(255, 212, 71, 0.24);
+  background:
+    linear-gradient(135deg, rgba(255, 212, 71, 0.08), rgba(36, 191, 242, 0.06)),
+    rgba(18, 24, 36, 0.9);
+}
+
+.rep-total-row,
+.reputation-row,
+.rep-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.rep-total-row {
+  margin-top: 12px;
+}
+
+.rep-total-row strong {
+  color: var(--gold);
+  font-size: 1.35rem;
+}
+
+.rep-total-row span,
+.rep-history-row span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.reputation-progress {
+  margin-top: 10px;
+}
+
+.reputation-board {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.reputation-row {
+  grid-template-columns: 42px minmax(0, 1fr) minmax(100px, auto) auto;
+  padding: 9px 10px;
+  border: 1px solid rgba(145, 170, 205, 0.16);
+  border-radius: 8px;
+  background: rgba(13, 19, 32, 0.62);
+}
+
+.reputation-row.player {
+  border-color: rgba(255, 212, 71, 0.42);
+  background: rgba(255, 212, 71, 0.09);
+}
+
+.reputation-row span,
+.reputation-row em {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.reputation-row b {
+  color: var(--gold);
+}
+
+.rep-history {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.rep-history h3 {
+  margin-bottom: 8px;
+}
+
+.rep-history-row {
+  padding: 6px 0;
 }
 
 .command-deck {
@@ -5398,6 +5488,19 @@ h3 {
     width: 58px;
     height: 58px;
     border-radius: 18px;
+  }
+
+  .reputation-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+  }
+
+  .reputation-row em {
+    grid-column: 2 / -1;
+  }
+
+  .rep-total-row,
+  .rep-history-row {
+    grid-template-columns: 1fr;
   }
 
   .grid,
