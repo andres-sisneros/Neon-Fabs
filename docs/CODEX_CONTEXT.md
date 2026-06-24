@@ -39,7 +39,10 @@ Do not let route combat complexity overwhelm the core economy loop.
 - `dispatch-flow.js`: dispatch wizard behavior.
 - `ui-scenes.js`: reusable pixel scene and static fab visual components.
 - `ui-first-session.js`: first-run, Profile command deck, Print Bay, and collection reveal rendering helpers.
+- `ui-intro.js`: first-load intro overlay that establishes the game world before the app UI.
 - `content/creative-overrides.js`: author-facing names/flavor/art hooks.
+- `assets/`: bundled art/audio assets.
+- `ASSET_CREDITS.md`: required third-party asset license tracking.
 - `design/`: rough lore, naming, and art direction.
 - `docs/`: active planning, rules, playtest, backend, and archived notes.
 - `tests/smoke.spec.js`: desktop and phone smoke tests.

@@ -10,6 +10,7 @@ The app currently works as a static prototype with a few large files. The goal i
 - `styles.css`: global app styles for every surface.
 - `ui-scenes.js`: reusable visual scene renderers extracted from `app.js`.
 - `ui-first-session.js`: first-session Profile and Print Bay renderers extracted from `app.js`.
+- `ui-intro.js`: first-load world-setting overlay.
 
 ## Target Shape
 
@@ -124,6 +125,7 @@ Initial extraction done:
 
 - `ui-scenes.js` owns reusable pixel scene and fab tile renderers.
 - `ui-first-session.js` owns first-run, Profile command deck, collection reveal, and city Print Bay command renderers.
+- `ui-intro.js` owns the first-load intro overlay.
 
 Start with lower-risk screens:
 

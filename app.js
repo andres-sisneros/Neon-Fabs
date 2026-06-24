@@ -3573,6 +3573,7 @@ document.querySelector("#resetButton").addEventListener("click", () => {
 });
 
 render();
+renderIntroOverlay();
 initializeBrowserNavigation();
 window.addEventListener("popstate", handleBrowserNavigation);
 setInterval(tick, 1000);

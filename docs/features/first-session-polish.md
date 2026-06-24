@@ -28,6 +28,7 @@ The player should feel like an operator learning a small machine economy. The UI
 - `app.js`
 - `ui-scenes.js`
 - `ui-first-session.js`
+- `ui-intro.js`
 - `styles.css`
 - `game-systems.js`
 - `content/creative-overrides.js`
@@ -37,11 +38,13 @@ The player should feel like an operator learning a small machine economy. The UI
 
 - Extracted reusable pixel scenes and fab tiles into `ui-scenes.js`.
 - Extracted first-run, Profile command deck, Print Bay command deck, and collection reveal rendering into `ui-first-session.js`.
+- Added a first-load intro overlay in `ui-intro.js` to establish this as a game world before the dashboard appears.
 - Left state, save shape, fab output, inventory, market, and dispatch behavior unchanged.
 
 ## Acceptance Checklist
 
 - [ ] Fresh profile starts cleanly on GitHub Pages.
+- [ ] First-load intro makes the project read as a game, not a development dashboard.
 - [ ] Chrome Pier and Orchid home choices both make sense.
 - [ ] First Print Bay collection is visible and satisfying.
 - [ ] Inventory does not require long scrolling before seeing items.

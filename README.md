@@ -11,6 +11,8 @@ Neon Fabs is a static browser prototype for an asynchronous cyberpunk economy ga
 - `docs/features/`: one-page briefs for planned feature work.
 - `content/creative-overrides.js`: safe player-facing names, flavor, and lore overrides.
 - `design/`: rough lore, naming, and art-direction workspace.
+- `assets/` and `ASSET_CREDITS.md`: bundled art/audio and license tracking.
+- `docs/ASSET_PIPELINE.md`: rules for adding open or third-party assets.
 
 ## Local Testing
 
@@ -38,6 +40,7 @@ The current prototype is intentionally DOM-first and static:
 - `game-systems.js`: simulation rules, state transitions, economy, dispatch, combat, and persistence.
 - `ui-scenes.js`: reusable pixel scene and static fab visual components.
 - `ui-first-session.js`: first-run, Profile command deck, Print Bay, and collection reveal rendering helpers.
+- `ui-intro.js`: first-load intro overlay and replay/bypass switches.
 - `app.js`: rendering, UI orchestration, action sheets, admin panels, and browser events.
 - `dispatch-flow.js`: dispatch wizard interactions.
 - `styles.css` and `dispatch-flow.css`: app styling.

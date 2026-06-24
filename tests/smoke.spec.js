@@ -7,7 +7,10 @@ async function openGame(page, view, role = "drifter") {
   });
   page.on("pageerror", (error) => errors.push(error.message));
 
-  await page.goto(`/index.html#view=${view}&city=chrome-pier`);
+  await page.addInitScript(() => {
+    window.localStorage.setItem("neon-fabs.intro.v1.seen", "yes");
+  });
+  await page.goto(`/index.html?intro=0#view=${view}&city=chrome-pier`);
   await page.waitForFunction(() => window.state && window.render);
   await page.evaluate(({ nextView, nextRole }) => {
     state.homeChosen = true;
@@ -27,6 +30,15 @@ async function capture(page, testInfo, name) {
     fullPage: true,
   });
 }
+
+test("intro overlay sets the scene and can be dismissed", async ({ page }) => {
+  await page.goto("/index.html?intro=1#view=profile&city=chrome-pier");
+  await page.waitForFunction(() => window.state && window.render);
+  await expect(page.locator(".intro-overlay")).toBeVisible();
+  await expect(page.locator("#introTitle")).toHaveText("Neon Fabs");
+  await page.getByRole("button", { name: "Enter Neon Fabs" }).click();
+  await expect(page.locator(".intro-overlay")).toHaveCount(0);
+});
 
 test("core screens render without browser errors", async ({ page }, testInfo) => {
   const screens = [

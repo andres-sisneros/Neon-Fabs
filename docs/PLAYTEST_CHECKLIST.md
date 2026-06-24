@@ -5,6 +5,8 @@ Use this checklist for quick manual runs after UI or core-loop changes. The goal
 ## Fresh Profile
 
 - [ ] Start a new prototype session.
+- [ ] Confirm the intro splash reads as a game, not a developer dashboard.
+- [ ] Dismiss the intro and confirm it does not return after refresh.
 - [ ] Choose Chrome Pier as home.
 - [ ] Repeat once with Orchid Sprawl as home.
 - [ ] Confirm Profile reads as status, not a suggested task list.
