@@ -4,13 +4,14 @@ The app currently works as a static prototype with a few large files. The goal i
 
 ## Current Hotspots
 
-- `app.js`: rendering, event wiring, admin UI, action sheets, view state, and some formatting.
+- `app.js`: rendering, event wiring, admin UI, action sheets, view state, and views not yet extracted.
 - `game-systems.js`: most rules and state transitions, including market, dispatch, combat, inventory, persistence, and contracts.
 - `game-content.js`: content catalogs, default state, creative overrides, items, fabs, roles, cities, and encounter data.
 - `styles.css`: global app styles for every surface.
 - `ui-scenes.js`: reusable visual scene renderers extracted from `app.js`.
 - `ui-first-session.js`: first-session Profile and Print Bay renderers extracted from `app.js`.
 - `ui-intro.js`: first-load world-setting overlay.
+- `ui-market.js`: Market view renderers extracted from `app.js`.
 
 ## Target Shape
 
@@ -126,12 +127,14 @@ Initial extraction done:
 - `ui-scenes.js` owns reusable pixel scene and fab tile renderers.
 - `ui-first-session.js` owns first-run, Profile command deck, collection reveal, and city Print Bay command renderers.
 - `ui-intro.js` owns the first-load intro overlay.
+- `ui-market.js` owns Market Sell, Buy, Orders, landing, category, and compact card renderers.
 
 Start with lower-risk screens:
 
 - contracts
 - wiki
 - profile
+- market CSS once the current Market layout settles
 
 Leave Dispatch/Admin for later because they are still changing quickly.
 

@@ -200,6 +200,8 @@ Print Bay collection never auto-sells or auto-recycles output. Low-tier goods ca
 
 Dispatch is the system for sending vehicles out to do route work. The screen is role-specific: Merchants see cargo shipping tools, while Routejacks see raid convoy tools.
 
+The Dispatch page prioritizes the current job flow and vehicles in motion. Completed arrivals, raid returns, route battle records, and route logs live in Records & Replays so route history stays available without crowding the launch flow.
+
 Vehicle fabs print classes. A Runner is a fast light-cargo vehicle, a Freighter is slower with more slots, an Interceptor is built for Routejack raids, and a Guardian is built for escort and convoy pressure. Aquatic vehicle fabs mirror those roles for water routes.
 
 Current vehicle balance stats:
@@ -217,7 +219,7 @@ Normal shipment flow:
 2. Choose a vehicle in the same city.
 3. Load cargo into the vehicle's available cargo slots.
 5. The cargo manifest and vehicle travel in real time.
-6. While traveling, the route rolls for NPC encounters using an hourly chance. If no encounter happens before arrival, the manifest and vehicle appear in the destination city's inventory.
+6. While traveling, the route rolls for NPC encounters per mile traveled. If no encounter happens before arrival, the manifest and vehicle appear in the destination city's inventory.
 7. If an NPC threat finds the convoy, the auto-battler resolves immediately and saves a replay. The player can watch it live or review it later.
 8. Successful Merchant deliveries pay freight credits based on distance, cargo units, cargo value, and how efficiently the vehicle was filled.
 

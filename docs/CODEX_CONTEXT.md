@@ -33,13 +33,14 @@ Do not let route combat complexity overwhelm the core economy loop.
 ## Current File Map
 
 - `index.html`: static app shell and script order.
-- `app.js`: rendering, event handling, admin panels, and most UI views.
+- `app.js`: rendering, event handling, admin panels, and UI orchestration for views not yet extracted.
 - `game-systems.js`: game rules, player actions, markets, dispatch, route combat, and save logic.
 - `game-content.js`: content catalogs, default state, cities, roles, items, fabs, encounters, and creative override hooks.
 - `dispatch-flow.js`: dispatch wizard behavior.
 - `ui-scenes.js`: reusable pixel scene and static fab visual components.
 - `ui-first-session.js`: first-run, Profile command deck, Print Bay, and collection reveal rendering helpers.
 - `ui-intro.js`: first-load intro overlay that establishes the game world before the app UI.
+- `ui-market.js`: Market page rendering helpers for Sell, Buy, Orders, and focused item/category browsing.
 - `content/creative-overrides.js`: author-facing names/flavor/art hooks.
 - `assets/`: bundled art/audio assets.
 - `ASSET_CREDITS.md`: required third-party asset license tracking.

@@ -53,6 +53,7 @@ This file tracks decisions that should not be reopened casually.
 
 - Route encounters are PvE for now.
 - Route danger should come from designed encounter rates, not visible arbitrary danger percentages.
+- Dispatch should prioritize the current role's launch flow and active jobs. Completed records, logs, and replays should remain available without being always-open dashboard clutter.
 - Encounter rates are tuned per mile.
 - Designed encounters should be editable without digging through combat code.
 - Winning a route encounter may reduce route pressure later, but the current prototype should stay readable.

@@ -42,6 +42,7 @@ The current prototype is intentionally DOM-first and static:
 - `ui-scenes.js`: reusable pixel scene and static fab visual components.
 - `ui-first-session.js`: first-run, Profile command deck, Print Bay, and collection reveal rendering helpers.
 - `ui-intro.js`: first-load intro overlay and replay/bypass switches.
+- `ui-market.js`: Market page rendering helpers.
 - `app.js`: rendering, UI orchestration, action sheets, admin panels, and browser events.
 - `dispatch-flow.js`: dispatch wizard interactions.
 - `styles.css` and `dispatch-flow.css`: app styling.

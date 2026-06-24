@@ -43,12 +43,13 @@ This is the short current roadmap. Historical roadmap detail lives in `docs/arch
 
 - Keep role-specific dispatch surfaces.
 - Make Merchant route selection, vehicle selection, and cargo loading feel less form-like.
+- Keep setup and active jobs visible first; tuck completed records and logs behind a records drawer.
 - Keep route encounters PvE and readable.
 - Move advanced battle tuning to Admin.
 
 ### 6. Code Modularization
 
-- Extract Market UI/CSS after the Market V2 redesign settles.
+- Market UI renderers have been extracted to `ui-market.js`; extract Market CSS once the layout settles.
 - Extract low-risk pure helpers first.
 - Avoid broad rewrites.
 - Keep each extraction behavior-preserving and covered by smoke tests.
