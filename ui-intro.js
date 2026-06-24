@@ -38,6 +38,10 @@ function renderIntroOverlay() {
       <div class="intro-cityline">
         <span></span><span></span><span></span><span></span><span></span>
       </div>
+      <figure class="intro-source-art">
+        <img src="assets/vendor/kenney/pico-8-city/source/Sample.png" alt="">
+        <figcaption>city feed / cc0 test asset</figcaption>
+      </figure>
       <div class="intro-route">
         <span class="intro-route-light light-a"></span>
         <span class="intro-route-light light-b"></span>

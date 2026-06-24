@@ -329,8 +329,8 @@ function renderParts() {
     return `<div class="market-line"><span class="item-name">${icon(item.iconName, item.rarity)} ${itemLabel(item)}</span><strong>${fab ? fabDefinition(fab.type).label : "Print Bay"}</strong></div>`;
   }).join("");
   mainPanel.innerHTML = `
-    <div class="grid">
-      <section class="panel">
+    <div class="inventory-layout">
+      <section class="panel inventory-main-panel">
         <div class="blueprint-head">
           <div>
             <h2>${cityName} Inventory</h2>
@@ -340,6 +340,12 @@ function renderParts() {
         </div>
         <div class="capacity-bar" aria-label="Inventory capacity"><span style="width:${Math.min(100, (inventoryCount(state.district) / inventoryLimit(state.district)) * 100)}%"></span></div>
         ${isHomeView ? "" : `<button type="button" data-view="cities">Open Map</button>`}
+        <div class="inventory-snapshot">
+          <span><strong>${visibleUnits}</strong> visible units</span>
+          <span><strong>${inventoryItems.length}</strong> item types</span>
+          <span><strong>${inventoryAvailable(state.district)}</strong> free slots</span>
+          <span><strong>${protectedVisible}</strong> meld locked</span>
+        </div>
         <div class="market-toolbar">
           <div class="segmented">${categoryOptions}</div>
           <label class="search-field"><span>Search</span><input id="inventorySearch" type="search" value="${state.inventorySearch}" placeholder="Item, rarity, fab"></label>
@@ -394,7 +400,8 @@ function renderParts() {
           </div>
         </details>
       </section>
-      <section class="panel">
+      <div class="inventory-side-stack">
+      <section class="panel inventory-side-panel">
         <div class="blueprint-head">
           <div>
             <h2>Print Bay</h2>
@@ -417,7 +424,7 @@ function renderParts() {
         }
         ${keptPreview ? `<h3>Sealed Prints</h3>${keptPreview}${pressure.kept.length > 6 ? `<p class="muted">+${pressure.kept.length - 6} more.</p>` : ""}` : ""}
       </section>
-      <section class="panel">
+      <section class="panel inventory-side-panel">
         <div class="blueprint-head">
           <div>
             <h2>Dispatch</h2>
@@ -427,6 +434,7 @@ function renderParts() {
         </div>
         <p class="muted">Use this city inventory to inspect what you own. Go to Dispatch when you are ready to load a vehicle.</p>
       </section>
+      </div>
     </div>`;
 }
 
@@ -1104,6 +1112,27 @@ function renderMelds() {
   const visibleMelds = melds.filter((meld) => (meld.type || "starter") === state.selectedMeldType);
   const readyMelds = visibleMelds.filter((meld) => !state.completed.includes(meld.name) && canMeld(meld));
   const fusedCount = visibleMelds.filter((meld) => state.completed.includes(meld.name)).length;
+  const focusMeld = readyMelds[0] || visibleMelds.find((meld) => !state.completed.includes(meld.name));
+  const focusParts = focusMeld ? recipeProgress(focusMeld) : [];
+  const focusReady = focusMeld ? canMeld(focusMeld) : false;
+  const focusMissing = focusParts.reduce((sum, part) => sum + Math.max(0, part.count - part.owned), 0);
+  const focusCard = focusMeld
+    ? `<section class="meld-focus-card rarity-border-${focusMeld.rarity} ${focusReady ? "ready" : "incomplete"}">
+        <div>
+          <p class="eyebrow">${focusReady ? "Ready to fuse" : "Next meld"}</p>
+          <h2>${meldLabel(focusMeld)}</h2>
+          <span>${focusReady ? "All parts are home" : `${focusMissing} missing part${focusMissing === 1 ? "" : "s"}`}</span>
+        </div>
+        <div class="recipe-list compact">${focusParts.map((part) => renderMeldIngredientRow(part)).join("")}</div>
+        ${focusReady ? `<button type="button" class="primary-command" data-meld="${focusMeld.name}">Create Meld</button>` : `<button type="button" data-view="inventory">Check Inventory</button>`}
+      </section>`
+    : `<section class="meld-focus-card complete">
+        <div>
+          <p class="eyebrow">Set complete</p>
+          <h2>${state.selectedMeldType === "starter" ? "Starter" : "Food"} Melds</h2>
+          <span>All visible melds are fused.</span>
+        </div>
+      </section>`;
   const categoryButtons = `<div class="segmented">
     ${meldTypes.map((type) => `<button type="button" class="${state.selectedMeldType === type.id ? "active" : ""}" data-meld-type="${type.id}">${type.label}</button>`).join("")}
   </div>`;
@@ -1138,6 +1167,7 @@ function renderMelds() {
         <span>${homeDistrict().name}</span>
       </div>
     </section>
+    ${isHomeView ? focusCard : ""}
     ${
       isHomeView
         ? `<section class="panel" style="margin-top:14px">

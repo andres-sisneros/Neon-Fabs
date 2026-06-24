@@ -1,13 +1,46 @@
 // First-session and Print Bay presentation helpers.
 
+const CITY_SAMPLE_ART_PATH = "assets/vendor/kenney/pico-8-city/source/Sample.png";
+
+function starterHomeProfile(cityId) {
+  return {
+    "chrome-pier": {
+      callout: "Dockside operator",
+      angle: "Route gear, vehicle markets, and practical starter trade.",
+      stats: ["Starter Fab", "Vehicle Fab", "Boost Fab", "Equipment Fab"],
+      artPosition: "48% 48%",
+    },
+    orchid: {
+      callout: "Night-market operator",
+      angle: "Starter melds beside food fabs and water route pressure.",
+      stats: ["Starter Fab", "Food Fab", "Aquatic Fab"],
+      artPosition: "18% 44%",
+    },
+  }[cityId] || {
+    callout: "New operator",
+    angle: districtById(cityId).description,
+    stats: fabTypeList(districtById(cityId)).split(", "),
+    artPosition: "50% 50%",
+  };
+}
+
+function renderCitySourceArt(district, profile) {
+  return `<figure class="city-source-art city-source-art-${district.id}">
+    <img src="${CITY_SAMPLE_ART_PATH}" alt="" loading="lazy" style="object-position:${profile.artPosition}">
+    <figcaption>${profile.callout}</figcaption>
+  </figure>`;
+}
+
 function renderFirstRunWelcome() {
   const starterFab = state.fabs.find((fab) => fab.type === "starter") || state.fabs[0];
   const homeCards = STARTER_HOME_CITIES.map((cityId) => {
     const district = districtById(cityId);
+    const profile = starterHomeProfile(cityId);
     return `<article class="item-card start-city-card">
-      <div class="card-row"><h3>${district.name}</h3><span class="pill">${fabTypeList(district)}</span></div>
-      <p class="muted">${district.description}</p>
-      ${renderCityPixelScene(district, { compact: true })}
+      ${renderCitySourceArt(district, profile)}
+      <div class="card-row"><h3>${district.name}</h3><span class="pill">${profile.callout}</span></div>
+      <p class="muted">${profile.angle}</p>
+      <div class="start-city-tags">${profile.stats.map((stat) => `<span>${stat}</span>`).join("")}</div>
       <button type="button" data-home-city="${district.id}">Start In ${district.name}</button>
     </article>`;
   }).join("");
@@ -28,7 +61,7 @@ function renderFirstRunWelcome() {
       <div class="blueprint-head">
         <div>
           <h2>Choose Starting Home</h2>
-          <p class="muted">Your free starter fab installs here. Meld ingredients must come home before they can fuse.</p>
+          <p class="muted">Your free Starter Fab installs here. Meld ingredients must come home before they can fuse.</p>
         </div>
         <span class="pill">One-time setup</span>
       </div>
@@ -121,6 +154,7 @@ function renderCollectedOutput(cityId = state.district) {
   const cityName = districtById(cityId).name;
   if (!groups.length) return "";
   const totalRevealed = groups.reduce((sum, group) => sum + group.count, 0);
+  const featured = groups[0];
   const raritySummary = rarityOrder
     .map((rarity) => {
       const count = groups.filter((group) => group.item.rarity === rarity).reduce((sum, group) => sum + group.count, 0);
@@ -149,6 +183,14 @@ function renderCollectedOutput(cityId = state.district) {
         <p class="muted">${cityName} Print Bay opened.</p>
       </div>
       <span class="pill">Battery recharged</span>
+    </div>
+    <div class="reveal-feature rarity-border-${featured.item.rarity}">
+      <span class="reveal-feature-icon">${icon(featured.item.iconName, featured.item.rarity)}</span>
+      <div>
+        <p class="eyebrow">Best pull</p>
+        <h3>${itemLabel(featured.item)}</h3>
+        <span>${rarityMeta[featured.item.rarity].label} x${featured.count}</span>
+      </div>
     </div>
     <div class="reveal-summary">${raritySummary || `<span class="reveal-rarity-chip">No stored items</span>`}</div>
     <div class="collection-grid">${rows}</div>

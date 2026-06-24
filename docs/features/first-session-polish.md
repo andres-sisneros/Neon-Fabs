@@ -39,6 +39,8 @@ The player should feel like an operator learning a small machine economy. The UI
 - Extracted reusable pixel scenes and fab tiles into `ui-scenes.js`.
 - Extracted first-run, Profile command deck, Print Bay command deck, and collection reveal rendering into `ui-first-session.js`.
 - Added a first-load intro overlay in `ui-intro.js` to establish this as a game world before the dashboard appears.
+- Added CC0 city-feed art treatment to the intro and first-run home-city cards.
+- Added a focused Print Bay reveal, backpack-first inventory layout, and next-meld focus card.
 - Left state, save shape, fab output, inventory, market, and dispatch behavior unchanged.
 
 ## Acceptance Checklist

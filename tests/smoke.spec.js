@@ -36,8 +36,45 @@ test("intro overlay sets the scene and can be dismissed", async ({ page }) => {
   await page.waitForFunction(() => window.state && window.render);
   await expect(page.locator(".intro-overlay")).toBeVisible();
   await expect(page.locator("#introTitle")).toHaveText("Neon Fabs");
+  await expect(page.locator(".intro-source-art img")).toBeVisible();
+  await expect.poll(() => page.locator(".intro-source-art img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Enter Neon Fabs" }).click();
   await expect(page.locator(".intro-overlay")).toHaveCount(0);
+});
+
+test("fresh home choice reads like a game start", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("neon-fabs.intro.v1.seen", "yes");
+  });
+  await page.goto("/index.html?intro=0#view=profile&city=chrome-pier");
+  await page.waitForFunction(() => window.state && window.render);
+
+  await expect(page.locator(".first-run-panel")).toBeVisible();
+  await expect(page.locator(".city-source-art img")).toHaveCount(2);
+  await expect.poll(() => page.locator(".city-source-art img").first().evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect(page.getByRole("button", { name: "Start In Chrome Pier" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Start In Chrome Pier" }).click();
+  await expect(page.locator(".operator-console")).toContainText("Chrome Pier");
+});
+
+test("print bay reveal leads into backpack inventory", async ({ page }) => {
+  await openGame(page, "fabs", "drifter");
+  await page.evaluate(() => {
+    const fab = state.fabs.find((candidate) => candidate.city === state.district) || state.fabs[0];
+    state.output = [
+      { name: "Common Starter Component A", cityId: state.district, fabId: fab.id, fabType: fab.type },
+      { name: "Uncommon Starter Component B", cityId: state.district, fabId: fab.id, fabType: fab.type },
+    ];
+    render();
+    claimOutput();
+  });
+
+  await expect(page.locator(".reveal-feature")).toContainText("Best pull");
+  await expect(page.locator(".collection-result")).not.toHaveCount(0);
+  await page.getByRole("button", { name: "Review Inventory" }).click();
+  await expect(page.locator(".inventory-layout")).toBeVisible();
+  await expect(page.locator(".backpack-grid")).toBeVisible();
 });
 
 test("core screens render without browser errors", async ({ page }, testInfo) => {

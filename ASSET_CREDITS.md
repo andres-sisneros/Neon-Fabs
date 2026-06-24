@@ -2,7 +2,15 @@
 
 Track all third-party art, audio, fonts, and visual packs used by Neon Fabs.
 
-Current build: no third-party visual assets are bundled. The intro cinematic is built with local HTML/CSS.
+Current build: one third-party CC0 visual asset pack is bundled for a first art-loading test.
+
+Asset: Pico-8 City
+File: `assets/vendor/kenney/pico-8-city/source/Sample.png`
+Author: Kenney
+Source URL: https://kenney.nl/assets/pico-8-city
+License: Creative Commons Zero, CC0
+Changes: Displayed as cropped, filtered "city feed" imagery in the intro and first-run home-city cards.
+Notes: Bundled with the original `License.txt`; attribution is appreciated by Kenney but not required.
 
 ## Template
 
