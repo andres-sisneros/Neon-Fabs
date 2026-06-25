@@ -277,6 +277,170 @@ test("admin test lab presets jump to useful playtest states", async ({ page }) =
   expect(snapshot.queued).toBe(4);
 });
 
+test("admin beta connection can save token and inspect server state", async ({ page }) => {
+  await page.route("https://beta.test/api/state", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        beta: { wipesExpected: true, notice: "Early shared beta data may be wiped." },
+        user: {
+          displayName: "Friend Tester",
+          homeCityId: "chrome-pier",
+          currentCityId: "chrome-pier",
+          credits: 123,
+          chips: 1,
+          reputation: 10,
+          batterySeconds: 7200,
+          batteryCapacitySeconds: 86400,
+        },
+        cities: [
+          { id: "chrome-pier", name: "Chrome Pier", inventoryLimit: 96 },
+          { id: "lowline", name: "Lowline", inventoryLimit: 96 },
+        ],
+        items: [
+          { id: "common-starter-a", name: "Common Starter Component A", rarity: "green", category: "meld", value: 8 },
+          { id: "common-runner", name: "Common Runner", rarity: "green", category: "vehicle", value: 70 },
+        ],
+        inventories: [{ cityId: "chrome-pier", itemId: "common-starter-a", qty: 2 }],
+        fabs: [{ id: "fab-1", type: "starter", cityId: "chrome-pier", rateGph: 12, storedGrams: 0.5, printPattern: "random" }],
+        pendingOutputs: [{ cityId: "chrome-pier", qty: 4 }],
+        market: {
+          listings: [{ id: "listing-1", cityId: "chrome-pier", itemId: "common-starter-a", qty: 1, price: 12 }],
+          bids: [{ id: "bid-1", cityId: "chrome-pier", itemId: "common-runner", qty: 1, price: 80 }],
+        },
+        shipments: [{
+          id: "ship-1",
+          fromCityId: "chrome-pier",
+          toCityId: "lowline",
+          vehicleItemId: "common-runner",
+          cargoJson: [{ itemId: "common-starter-a", qty: 1 }],
+          status: "in_transit",
+          arrivalAt: "2026-06-25T12:00:00.000Z",
+        }],
+      }),
+    });
+  });
+
+  await openGame(page, "admin", "drifter");
+  await page.evaluate(() => {
+    localStorage.removeItem("neon-fabs.beta-client.v1");
+    render();
+  });
+
+  await expect(page.getByRole("heading", { name: "Beta Server Connection" })).toBeVisible();
+  await page.locator("#betaApiBase").fill("https://beta.test");
+  await page.locator("#betaToken").fill("tester-token");
+  await page.getByRole("button", { name: "Save Token" }).click();
+  await page.getByRole("button", { name: "Load Beta State" }).click();
+
+  await expect(page.locator(".beta-client-panel")).toContainText("Friend Tester");
+  await expect(page.locator(".beta-client-panel")).toContainText("123cr");
+  await expect(page.locator(".beta-client-panel")).toContainText("Early shared beta data may be wiped.");
+
+  await page.getByRole("button", { name: "Open Beta Shell" }).click();
+  const shell = page.locator(".beta-shell");
+  await expect(page.getByRole("heading", { name: "Beta Shell" })).toBeVisible();
+  await expect(shell).toContainText("Friend Tester");
+  await expect(shell).toContainText("123cr");
+  await expect(shell).toContainText("1");
+  await expect(shell).toContainText("10");
+  await expect(shell).toContainText("Chrome Pier");
+  await expect(shell).toContainText("Common Starter Component A");
+  await expect(shell).toContainText("Starter Fab");
+  await expect(shell).toContainText("4 sealed");
+  await expect(shell).toContainText("Listings");
+  await expect(shell).toContainText("Bids");
+  await expect(shell).toContainText("Shipments");
+  await expect(shell).toContainText("Common Runner");
+  await expect(shell.getByRole("button", { name: "Collect Output" })).toBeVisible();
+  await expect(shell.getByRole("button", { name: "Send Shipment" })).toHaveCount(0);
+  await expect(shell.getByRole("button", { name: "Create Meld" })).toHaveCount(0);
+});
+
+test("beta mode collects Print Bay output from the normal Fabs page", async ({ page }) => {
+  const initialState = {
+    beta: { wipesExpected: true, notice: "Early shared beta data may be wiped." },
+    user: {
+      displayName: "Friend Tester",
+      homeCityId: "chrome-pier",
+      currentCityId: "chrome-pier",
+      credits: 123,
+      chips: 1,
+      reputation: 10,
+      batterySeconds: 7200,
+      batteryCapacitySeconds: 86400,
+    },
+    cities: [
+      { id: "chrome-pier", name: "Chrome Pier", inventoryLimit: 96 },
+      { id: "lowline", name: "Lowline", inventoryLimit: 96 },
+    ],
+    items: [
+      { id: "common-starter-a", name: "Common Starter Component A", rarity: "green", category: "meld", value: 8 },
+      { id: "common-starter-b", name: "Common Starter Component B", rarity: "green", category: "meld", value: 8 },
+    ],
+    inventories: [],
+    fabs: [{ id: "fab-1", type: "starter", cityId: "chrome-pier", rateGph: 12, storedGrams: 0.5, printPattern: "random" }],
+    pendingOutputs: [{ cityId: "chrome-pier", qty: 2 }],
+    market: { listings: [], bids: [] },
+    shipments: [],
+  };
+  const collectedState = {
+    ...initialState,
+    user: { ...initialState.user, batterySeconds: 86400 },
+    inventories: [{ cityId: "chrome-pier", itemId: "common-starter-a", qty: 1 }, { cityId: "chrome-pier", itemId: "common-starter-b", qty: 1 }],
+    pendingOutputs: [],
+  };
+  let collectCalls = 0;
+
+  await page.route("https://beta.test/api/state", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(collectCalls ? collectedState : initialState),
+    });
+  });
+  await page.route("https://beta.test/api/fabs/collect", async (route) => {
+    collectCalls += 1;
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({ cityId: "chrome-pier" });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        collected: [
+          { id: "out-1", cityId: "chrome-pier", fabId: "fab-1", itemId: "common-starter-a" },
+          { id: "out-2", cityId: "chrome-pier", fabId: "fab-1", itemId: "common-starter-b" },
+        ],
+        rechargedTo: 86400,
+        state: collectedState,
+      }),
+    });
+  });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("neon-fabs.intro.v1.seen", "yes");
+    window.localStorage.setItem("neon-fabs.beta-client.v1", JSON.stringify({
+      apiBase: "https://beta.test",
+      token: "tester-token",
+      lastStatus: "saved",
+    }));
+  });
+
+  await openGame(page, "fabs", "drifter");
+
+  await expect(page.locator("#walletSummary")).toContainText("123cr");
+  await expect(page.locator("#mainPanel")).toContainText("Server fab");
+  await expect(page.getByRole("button", { name: "Collect Prints" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Collect Prints" }).click();
+
+  await expect(page.locator(".reveal-feature")).toContainText("Best pull");
+  await expect(page.locator(".collection-grid")).toContainText("Common Starter Component A");
+  await expect(page.locator(".collection-grid")).toContainText("Common Starter Component B");
+  await expect(page.locator("#rightPanel")).toContainText("0 sealed");
+  expect(collectCalls).toBe(1);
+});
+
 test("melds page uses compact visual set cards", async ({ page }) => {
   await openGame(page, "melds", "drifter");
   await page.evaluate(() => {

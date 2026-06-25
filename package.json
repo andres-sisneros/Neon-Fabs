@@ -5,7 +5,7 @@
   "main": "app.js",
   "scripts": {
     "test": "npm run test:syntax && npm run test:api && npm run test:e2e",
-    "test:syntax": "node --check app.js && node --check game-systems.js && node --check game-content.js && node --check ui-scenes.js && node --check ui-first-session.js && node --check ui-intro.js && node --check worker/index.mjs && node --check content/creative-overrides.js && node --check scripts/serve-lan.js",
+    "test:syntax": "node --check app.js && node --check game-systems.js && node --check game-content.js && node --check ui-scenes.js && node --check ui-first-session.js && node --check ui-intro.js && node --check beta-client.js && node --check worker/index.mjs && node --check content/creative-overrides.js && node --check scripts/serve-lan.js",
     "test:api": "node --test tests/beta-api.test.mjs",
     "test:e2e": "node scripts/run-playtest.js",
     "test:e2e:raw": "playwright test",

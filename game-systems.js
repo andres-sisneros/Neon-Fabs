@@ -8,8 +8,13 @@ function loadState() {
 }
 
 function clearLegacySaves() {
+  const preservedKeys = new Set([
+    PLAYTEST_SAVE_KEY,
+    "neon-fabs.beta-client.v1",
+    "neon-fabs.intro.v1.seen",
+  ]);
   Object.keys(localStorage)
-    .filter((key) => key.startsWith(LEGACY_SAVE_PREFIX) && key !== PLAYTEST_SAVE_KEY)
+    .filter((key) => key.startsWith(LEGACY_SAVE_PREFIX) && !preservedKeys.has(key))
     .forEach((key) => localStorage.removeItem(key));
 }
 
@@ -419,7 +424,7 @@ function hasRouteActivity() {
 
 function featureUnlocked(view) {
   const target = viewAlias(view);
-  if (["profile", "wiki", "admin", "item", "fab-detail"].includes(target)) return true;
+  if (["profile", "wiki", "admin", "beta-shell", "item", "fab-detail"].includes(target)) return true;
   if (!state.homeChosen) return false;
   if (["contracts", "fabs"].includes(target)) return true;
   if (target === "inventory") return hasOpenedPrintBay() || hasMarketActivity() || level() > 0 || Boolean(state.claimedContracts?.length);

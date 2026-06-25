@@ -2,11 +2,12 @@
 
 ## Current Prototype Level
 
-Neon Fabs is still a static browser prototype. With the current setup:
+Neon Fabs is still mostly a static browser prototype, with the first beta-server gameplay slice in progress. With the current setup:
 
 - Each browser gets its own local playtest save.
 - Friends can test the same build, but they do not share a market or world state yet.
-- Real accounts, shared markets, and server-authoritative timers come later.
+- A saved beta tester token can load server state and use server-backed Fabs / Print Bay collection.
+- Shared markets, dispatch, and most other gameplay actions still come later.
 
 ## Local Phone Testing
 
@@ -78,7 +79,7 @@ See `BACKEND_PLAN.md` for the future server model.
 
 ## Shared Beta Backend Local Check
 
-The first Worker/D1 foundation is now in the repo, but the browser client has not switched to server mode yet.
+The first Worker/D1 foundation is now in the repo. The browser client switches the Fabs / Print Bay flow to server mode when a beta tester token is saved.
 
 Useful local commands after Wrangler is available:
 
@@ -88,3 +89,5 @@ npm run worker:dev
 ```
 
 Before real deployment, replace the placeholder D1 database id in `wrangler.jsonc` and set an `ADMIN_TOKEN` secret with Wrangler. Manual tester creation uses `POST /api/admin/tester` with the `x-admin-token` header.
+
+The app's Admin page includes a Shared Beta Connection panel. Use it to save a Worker API base, paste a manual tester token, create a tester when you have the admin token, and inspect `/api/state`. Open Beta Shell from Admin to inspect that loaded server account. The normal Fabs tab now collects from `POST /api/fabs/collect` in beta mode; other player screens may still show local prototype data until their server slices land.

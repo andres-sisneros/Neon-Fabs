@@ -28,9 +28,10 @@ Early beta means a real shared online test for manually approved friends. It sho
    - API smoke tests.
 2. Server state mode:
    - Browser can load a beta account from `/api/state`.
-   - Local prototype mode remains the default until server mode is stable.
+   - A saved beta token now makes server runtime the primary path for supported screens.
 3. Server fab loop:
    - Server ticks battery, grams, output rolls, collection, and inventory writes.
+   - Normal Fabs / Print Bay collection now uses `POST /api/fabs/collect` when a beta token is configured.
 4. Shared market:
    - Server owns listings, bids, buys, sells, and transaction history.
 5. Patterns and reputation:
@@ -52,8 +53,9 @@ The first foundation slice now exists:
 - `worker/schema.sql`: D1 schema.
 - `wrangler.jsonc`: Cloudflare Worker config with D1 binding placeholder.
 - `tests/beta-api.test.mjs`: API contract tests.
+- `beta-client.js`: browser-side beta API helper for storing manual tester tokens and loading `/api/state`.
 
-The browser client still uses local prototype state. The next slice is a beta client mode that can authenticate with a manually issued token and read `/api/state`.
+Admin has a Shared Beta Connection panel that can create manual testers against a live Worker and inspect server state from `/api/state`. A Beta Shell can open that loaded server state in a player-like layout. Normal Fabs / Print Bay collection now switches to server-owned state whenever a beta tester token is saved; clearing the token returns to local prototype mode.
 
 ## Release Gates
 

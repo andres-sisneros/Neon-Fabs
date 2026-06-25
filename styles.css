@@ -3042,6 +3042,72 @@ h3 {
   background: rgba(12, 18, 30, 0.62);
 }
 
+.beta-client-panel {
+  border-color: rgba(36, 191, 242, 0.28);
+  background:
+    linear-gradient(135deg, rgba(36, 191, 242, 0.08), rgba(120, 255, 136, 0.045)),
+    rgba(12, 18, 30, 0.66);
+}
+
+.beta-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.beta-shell-hero {
+  border-color: rgba(36, 191, 242, 0.32);
+  background:
+    linear-gradient(135deg, rgba(36, 191, 242, 0.1), rgba(255, 212, 71, 0.045)),
+    rgba(18, 24, 36, 0.9);
+}
+
+.beta-shell-grid,
+.beta-shell-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.beta-shell-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(145, 170, 205, 0.18);
+  border-radius: 8px;
+  background: rgba(9, 13, 20, 0.46);
+}
+
+.beta-shell-card h3 {
+  margin: 0;
+}
+
+.beta-shell-card.compact {
+  align-content: start;
+}
+
+.beta-shipment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-weight: 800;
+}
+
+.beta-shipment-row:last-child {
+  border-bottom: 0;
+}
+
+.beta-shipment-row em {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
 .admin-section + .admin-section {
   margin-top: 4px;
 }

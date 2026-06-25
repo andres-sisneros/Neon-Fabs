@@ -60,6 +60,8 @@ test("beta API collects outputs and creates the first pattern", async () => {
   });
   assert.equal(collected.response.status, 200);
   assert.equal(collected.body.collected.length, 4);
+  assert.equal(collected.body.state.pendingOutputs.length, 0);
+  assert.equal(collected.body.state.inventories.reduce((sum, row) => sum + Number(row.qty || 0), 0), 4);
 
   const pattern = await call(repo, "/api/patterns/create", {
     method: "POST",

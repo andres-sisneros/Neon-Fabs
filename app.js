@@ -11,6 +11,33 @@ const backButton = document.querySelector("#backButton");
 const brandTitle = document.querySelector(".brand div strong");
 const brandSubtitle = document.querySelector(".brand div span");
 let searchRenderTimer = null;
+let betaRuntimeLoadPromise = null;
+let betaCollectingCity = "";
+
+function betaRuntimeActive() {
+  const config = window.NeonBetaClient?.readConfig?.() || {};
+  return Boolean(config.token);
+}
+
+function betaRuntimeState() {
+  return window.NeonBetaClient?.readLastState?.() || null;
+}
+
+function betaRuntimeConfig() {
+  return window.NeonBetaClient?.readConfig?.() || {};
+}
+
+function ensureBetaRuntimeState() {
+  const config = betaRuntimeConfig();
+  if (!config.token || betaRuntimeState() || betaRuntimeLoadPromise || config.lastStatus === "error" || !window.NeonBetaClient?.loadState) return;
+  betaRuntimeLoadPromise = window.NeonBetaClient.loadState()
+    .then(() => addFeed("Shared Beta", "server state loaded", "chip"))
+    .catch(() => addFeed("Shared Beta", "server load failed", "data"))
+    .finally(() => {
+      betaRuntimeLoadPromise = null;
+      render();
+    });
+}
 
 function escapeHtml(value = "") {
   return String(value)
@@ -23,6 +50,7 @@ function escapeHtml(value = "") {
 function viewTitle() {
   return {
     admin: "Admin",
+    "beta-shell": "Beta Shell",
     contracts: "Contracts",
     cities: "Cities & Routes",
     fabs: "Fabs",
@@ -43,7 +71,43 @@ function viewTitle() {
   }[state.activeView] || state.activeView.toUpperCase();
 }
 
+function renderBetaHeader() {
+  const project = window.NEON_CONTENT_OVERRIDES?.project || {};
+  const betaState = betaRuntimeState();
+  const config = betaRuntimeConfig();
+  const summary = betaState ? window.NeonBetaClient?.summarizeState?.(betaState) : config.lastSummary;
+  const user = betaState?.user || {};
+  const userName = betaField(user, "displayName", "display_name") || summary?.userName || "Beta Tester";
+  const homeCityId = betaField(user, "homeCityId", "home_city_id") || summary?.homeCityId || state.homeCity;
+  const currentCityId = state.district || betaField(user, "currentCityId", "current_city_id") || homeCityId;
+  const credits = Number(betaField(user, "credits", "credits") || summary?.credits || 0);
+  const chips = Number(betaField(user, "chips", "chips") || 0);
+  const reputation = Number(betaField(user, "reputation", "reputation") || summary?.reputation || 0);
+  const battery = Number(betaField(user, "batterySeconds", "battery_seconds") || 0);
+  const batteryCap = Number(betaField(user, "batteryCapacitySeconds", "battery_capacity_seconds") || 0);
+  const pending = Number(summary?.pendingOutputs || 0);
+  const loading = !betaState && (config.lastStatus === "loading" || betaRuntimeLoadPromise);
+  const stats = [
+    `<article class="stat-card wallet-stat"><span>Credits</span><strong>${formatCredits(credits)}</strong></article>`,
+    `<article class="stat-card rep-stat"><span>Reputation</span><strong>${reputation.toLocaleString()}</strong></article>`,
+    `<article class="stat-card"><span>Power</span><strong>${betaState ? formatPower(battery) : loading ? "Loading" : "Offline"}</strong></article>`,
+    `<article class="stat-card"><span>Home City</span><strong>${escapeHtml(betaCityName(betaState, homeCityId))}</strong></article>`,
+    `<article class="stat-card"><span>Print Bay</span><strong>${pending.toLocaleString()} sealed</strong></article>`,
+  ];
+  if (brandTitle) brandTitle.textContent = project.title || "Neon Fabs";
+  if (brandSubtitle) brandSubtitle.textContent = project.subtitle || "Shared beta";
+  if (walletSummary) walletSummary.textContent = `${formatCredits(credits)} | ${reputation.toLocaleString()} Rep | ${chips} chip${chips === 1 ? "" : "s"}`;
+  playerSummary.textContent = `${userName} | Shared Beta | Home: ${escapeHtml(betaCityName(betaState, homeCityId))} | Viewing: ${escapeHtml(betaCityName(betaState, currentCityId))} | Power: ${betaState ? `${formatPower(battery)} / ${formatPower(batteryCap)}` : "loading"}`;
+  screenTitle.textContent = viewTitle();
+  if (backButton) backButton.hidden = !state.viewHistory?.length;
+  quickStats.innerHTML = stats.join("");
+}
+
 function renderHeader() {
+  if (betaRuntimeActive()) {
+    renderBetaHeader();
+    return;
+  }
   const project = window.NEON_CONTENT_OVERRIDES?.project || {};
   const rep = reputationTotal();
   const title = reputationTitle(rep);
@@ -66,10 +130,46 @@ function renderHeader() {
   quickStats.innerHTML = stats.join("");
 }
 
+function renderBetaRuntimeRightPanel() {
+  const betaState = betaRuntimeState();
+  const config = betaRuntimeConfig();
+  const summary = betaState ? window.NeonBetaClient?.summarizeState?.(betaState) : config.lastSummary;
+  const user = betaState?.user || {};
+  const battery = Number(betaField(user, "batterySeconds", "battery_seconds") || 0);
+  const batteryCap = Number(betaField(user, "batteryCapacitySeconds", "battery_capacity_seconds") || 0);
+  rightPanel.innerHTML = `
+    <h2>Shared Beta</h2>
+    <div class="side-metric"><span>Status</span><strong>${escapeHtml(config.lastStatus || "idle")}</strong></div>
+    <div class="side-metric"><span>Tester</span><strong>${escapeHtml(summary?.userName || "Loading")}</strong></div>
+    <div class="side-metric"><span>Credits</span><strong>${formatCredits(summary?.credits || 0)}</strong></div>
+    <div class="side-metric"><span>Reputation</span><strong>${Number(summary?.reputation || 0).toLocaleString()}</strong></div>
+    <div class="side-metric"><span>Battery</span><strong>${betaState ? `${formatPower(battery)} / ${formatPower(batteryCap)}` : "loading"}</strong></div>
+    <div class="side-metric"><span>Inventory</span><strong>${Number(summary?.inventoryUnits || 0).toLocaleString()}</strong></div>
+    <div class="side-metric"><span>Print Bay</span><strong>${Number(summary?.pendingOutputs || 0).toLocaleString()} sealed</strong></div>
+    <div class="side-metric"><span>Mode</span><strong>Server</strong></div>`;
+}
+
 function renderRightPanel() {
   const filament = activeFilament();
   const scannerActive = hasActiveScanner();
   const rep = reputationTotal();
+  if (state.activeView === "beta-shell") {
+    const beta = window.NeonBetaClient?.readConfig?.() || {};
+    const summary = beta.lastSummary;
+    rightPanel.innerHTML = `
+      <h2>Beta State</h2>
+      <div class="side-metric"><span>Status</span><strong>${escapeHtml(beta.lastStatus || "idle")}</strong></div>
+      <div class="side-metric"><span>Tester</span><strong>${escapeHtml(summary?.userName || "Not loaded")}</strong></div>
+      <div class="side-metric"><span>Credits</span><strong>${formatCredits(summary?.credits || 0)}</strong></div>
+      <div class="side-metric"><span>Reputation</span><strong>${Number(summary?.reputation || 0).toLocaleString()}</strong></div>
+      <div class="side-metric"><span>Inventory</span><strong>${Number(summary?.inventoryUnits || 0).toLocaleString()}</strong></div>
+      <div class="side-metric"><span>Mode</span><strong>Server</strong></div>`;
+    return;
+  }
+  if (betaRuntimeActive() && state.activeView !== "admin") {
+    renderBetaRuntimeRightPanel();
+    return;
+  }
   if (viewAlias(state.activeView) === "profile") {
     rightPanel.innerHTML = `
       <h2>Operator</h2>
@@ -266,6 +366,10 @@ function renderProfile() {
 }
 
 function renderFindings() {
+  if (betaRuntimeActive()) {
+    renderBetaFindings();
+    return;
+  }
   const cityFabs = fabsForCity();
   const cityQueuedOutput = queuedOutputFor(state.district);
   const otherQueuedOutput = queuedOutputOutside(state.district);
@@ -2398,6 +2502,500 @@ function renderAdminTestLab() {
   </section>`;
 }
 
+function renderBetaClientPanel() {
+  const beta = window.NeonBetaClient?.readConfig?.() || {};
+  const homeOptions = STARTER_HOME_CITIES.map((cityId) => {
+    const city = districtById(cityId);
+    return `<option value="${cityId}" ${beta.testerHomeCity === cityId ? "selected" : ""}>${city.name}</option>`;
+  }).join("");
+  const summary = beta.lastSummary;
+  const statusLabel = beta.lastStatus === "connected"
+    ? "connected"
+    : beta.lastStatus === "created"
+      ? "tester created"
+      : beta.lastStatus === "error"
+        ? "error"
+        : beta.token
+          ? "token stored"
+          : "not linked";
+  const loadedAt = beta.lastLoadedAt ? new Date(beta.lastLoadedAt).toLocaleString() : "Never";
+  return `<section class="admin-lab-panel beta-client-panel">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">Shared Beta</p>
+        <h2>Beta Server Connection</h2>
+        <p class="muted">Store a manual tester token and inspect <code>/api/state</code> without switching the playable prototype out of local mode.</p>
+      </div>
+      <span class="pill">${statusLabel}</span>
+    </div>
+    <div class="admin-grid">
+      <article class="admin-card">
+        <h3>Connection</h3>
+        <label class="search-field"><span>Worker API Base</span><input id="betaApiBase" type="url" value="${escapeHtml(beta.apiBase || "http://127.0.0.1:8787")}" placeholder="http://127.0.0.1:8787"></label>
+        <label class="search-field"><span>Tester Token</span><input id="betaToken" type="password" value="${escapeHtml(beta.token || "")}" placeholder="Paste issued beta token"></label>
+        <div class="button-row">
+          <button type="button" data-admin="beta-save-config">Save Token</button>
+          <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Load Beta State</button>
+          <button type="button" data-view="beta-shell">Open Beta Shell</button>
+          <button type="button" class="secondary" data-admin="beta-clear-config">Clear</button>
+        </div>
+      </article>
+      <article class="admin-card">
+        <h3>Create Manual Tester</h3>
+        <label class="search-field"><span>Admin Token</span><input id="betaAdminToken" type="password" value="${escapeHtml(beta.adminToken || "")}" placeholder="Worker ADMIN_TOKEN"></label>
+        <label class="search-field"><span>Display Name</span><input id="betaTesterName" type="text" value="${escapeHtml(beta.testerName || "Beta Tester")}" maxlength="40"></label>
+        <label class="select-field"><span>Home City</span><select id="betaTesterHomeCity">${homeOptions}</select></label>
+        <div class="button-row">
+          <button type="button" data-admin="beta-save-config">Save Fields</button>
+          <button type="button" data-admin="beta-create-tester" ${beta.adminToken ? "" : "disabled"}>Create Tester</button>
+        </div>
+      </article>
+      <article class="admin-card admin-wide">
+        <div class="blueprint-head">
+          <h3>Last Server State</h3>
+          <span class="pill">${loadedAt}</span>
+        </div>
+        ${
+          summary
+            ? `<div class="fab-metrics">
+                <div class="side-metric"><span>Tester</span><strong>${escapeHtml(summary.userName)}</strong></div>
+                <div class="side-metric"><span>Credits</span><strong>${formatCredits(summary.credits)}</strong></div>
+                <div class="side-metric"><span>Reputation</span><strong>${summary.reputation.toLocaleString()}</strong></div>
+                <div class="side-metric"><span>Inventory</span><strong>${summary.inventoryUnits}</strong></div>
+                <div class="side-metric"><span>Fabs</span><strong>${summary.fabs}</strong></div>
+                <div class="side-metric"><span>Print Bay</span><strong>${summary.pendingOutputs}</strong></div>
+                <div class="side-metric"><span>Orders</span><strong>${summary.listings}/${summary.bids}</strong></div>
+                <div class="side-metric"><span>Shipments</span><strong>${summary.shipments}</strong></div>
+              </div>
+              ${summary.notice ? `<p class="battery-empty">${escapeHtml(summary.notice)}</p>` : ""}`
+            : `<p class="muted">No beta state loaded yet. Create a tester or paste a token, then load state.</p>`
+        }
+        ${beta.lastError ? `<p class="battery-empty">${escapeHtml(beta.lastError)}</p>` : ""}
+      </article>
+    </div>
+  </section>`;
+}
+
+function betaStateSnapshot() {
+  return window.NeonBetaClient?.readLastState?.() || null;
+}
+
+function betaField(row, camelKey, snakeKey = camelKey) {
+  if (!row) return "";
+  return row[camelKey] ?? row[snakeKey] ?? "";
+}
+
+function betaServerCatalog(betaState, key) {
+  return new Map((betaState?.[key] || []).map((entry) => [entry.id, entry]));
+}
+
+function betaCityName(betaState, cityId) {
+  if (!cityId) return "Unknown City";
+  const city = betaServerCatalog(betaState, "cities").get(cityId);
+  if (city?.name) return city.name;
+  return districts.find((district) => district.id === cityId)?.name || cityId;
+}
+
+function betaItem(betaState, itemId) {
+  const item = betaServerCatalog(betaState, "items").get(itemId);
+  if (item) return item;
+  return { id: itemId, name: itemId || "Unknown Item", rarity: "green", category: "unknown", value: 0 };
+}
+
+function betaItemChip(betaState, itemId) {
+  const item = betaItem(betaState, itemId);
+  return `<span class="item-name">${icon("data", item.rarity || "green")} ${escapeHtml(item.name || item.id)}</span>`;
+}
+
+function betaFormatDate(value) {
+  if (!value) return "not scheduled";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+function betaGroupByCity(rows, cityKey = "cityId", snakeKey = "city_id") {
+  return (rows || []).reduce((groups, row) => {
+    const cityId = betaField(row, cityKey, snakeKey) || "unknown";
+    if (!groups[cityId]) groups[cityId] = [];
+    groups[cityId].push(row);
+    return groups;
+  }, {});
+}
+
+function betaPendingOutputsByCity(betaState) {
+  return (betaState?.pendingOutputs || []).reduce((groups, output) => {
+    const cityId = betaField(output, "cityId", "city_id") || "unknown";
+    groups[cityId] = (groups[cityId] || 0) + Number(output.qty || 1);
+    return groups;
+  }, {});
+}
+
+function betaLocalFab(fab) {
+  return {
+    id: betaField(fab, "id", "id") || "",
+    type: betaField(fab, "type", "type") || "starter",
+    city: betaField(fab, "cityId", "city_id") || state.district,
+    grams: Number(betaField(fab, "storedGrams", "stored_grams") || 0),
+    printPattern: betaField(fab, "printPattern", "print_pattern") || "random",
+    mode: "parts",
+  };
+}
+
+function betaFabsForCity(betaState, cityId = state.district) {
+  return (betaState?.fabs || []).filter((fab) => betaField(fab, "cityId", "city_id") === cityId);
+}
+
+function betaCollectionGroups(betaState, cityId = state.district) {
+  const collection = betaRuntimeConfig().lastCollection;
+  if (!collection || collection.cityId !== cityId || !Array.isArray(collection.collected)) return [];
+  const groups = new Map();
+  collection.collected.forEach((row) => {
+    const itemId = row.itemId || row.item_id || "";
+    const serverItem = betaItem(betaState, itemId);
+    const localItem = allItems().find((candidate) => candidate.name === (row.name || serverItem.name));
+    const item = localItem || serverItem;
+    const key = item.name || row.name || itemId;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        name: key,
+        item,
+        rarity: item.rarity || "green",
+        iconName: localItem?.iconName || "data",
+        count: 0,
+      });
+    }
+    groups.get(key).count += 1;
+  });
+  return [...groups.values()].sort((a, b) => (
+    rarityOrder.indexOf(b.rarity) - rarityOrder.indexOf(a.rarity)
+    || a.name.localeCompare(b.name)
+  ));
+}
+
+function renderBetaCollectedOutput(betaState, cityId = state.district) {
+  const groups = betaCollectionGroups(betaState, cityId);
+  if (!groups.length) return "";
+  const totalRevealed = groups.reduce((sum, group) => sum + group.count, 0);
+  const featured = groups[0];
+  const raritySummary = rarityOrder
+    .map((rarity) => {
+      const count = groups.filter((group) => group.rarity === rarity).reduce((sum, group) => sum + group.count, 0);
+      return count ? `<span class="reveal-rarity-chip rarity-border-${rarity}">${rarityMeta[rarity].label} x${count}</span>` : "";
+    })
+    .join("");
+  const rows = groups.map((group) => `<article class="collection-result rarity-border-${group.rarity}">
+    <div class="card-row">
+      <strong class="item-name">${icon(group.iconName, group.rarity)} ${escapeHtml(group.name)}</strong>
+      <span class="pill">x${group.count}</span>
+    </div>
+    <div class="collection-meta">
+      <span class="rarity-chip rarity-${group.rarity}">${rarityMeta[group.rarity]?.label || group.rarity}</span>
+      <span class="collection-status kept">Stored - ${escapeHtml(betaCityName(betaState, cityId))}</span>
+    </div>
+    <button type="button" disabled>Inventory action soon</button>
+  </article>`).join("");
+  return `<section class="panel collected-panel reveal-panel beta-reveal-panel" style="margin-top:14px">
+    <div class="blueprint-head">
+      <div>
+        <h2>${totalRevealed} Print${totalRevealed === 1 ? "" : "s"} Revealed</h2>
+        <p class="muted">${escapeHtml(betaCityName(betaState, cityId))} server Print Bay opened.</p>
+      </div>
+      <span class="pill">Battery recharged</span>
+    </div>
+    <div class="reveal-feature rarity-border-${featured.rarity}">
+      <span class="reveal-feature-icon">${icon(featured.iconName, featured.rarity)}</span>
+      <div>
+        <p class="eyebrow">Best pull</p>
+        <h3>${escapeHtml(featured.name)}</h3>
+        <span>${rarityMeta[featured.rarity]?.label || featured.rarity} x${featured.count}</span>
+      </div>
+    </div>
+    <div class="reveal-summary">${raritySummary}</div>
+    <div class="collection-grid">${rows}</div>
+  </section>`;
+}
+
+function renderBetaFabCityCommand(betaState, cityFabs, pendingByCity) {
+  const cityId = state.district;
+  const pending = Number(pendingByCity[cityId] || 0);
+  const totalPending = Object.values(pendingByCity).reduce((sum, count) => sum + Number(count || 0), 0);
+  const otherPending = Math.max(0, totalPending - pending);
+  const collecting = betaCollectingCity === cityId;
+  const bayState = pending ? "ready" : cityFabs.length ? "printing" : "idle";
+  const localFabs = cityFabs.map(betaLocalFab);
+  const hudStats = [
+    `${cityFabs.length} fab${cityFabs.length === 1 ? "" : "s"}`,
+    pending ? `${pending} ready` : "no prints",
+    otherPending ? `${otherPending} elsewhere` : "",
+  ].filter(Boolean);
+  const buttonLabel = collecting ? "Opening..." : pending ? "Collect Prints" : cityFabs.length ? "Printing..." : "No Server Fabs";
+  return `<section class="command-deck fab-command-deck print-bay-card state-${bayState}">
+    <div class="command-main">
+      ${cityFabs.length ? renderFabPixelScene(localFabs[0], {
+        fabs: localFabs,
+        label: `${betaCityName(betaState, cityId)} Print Bay`,
+        compact: true,
+        readyCount: pending,
+        state: collecting ? "ready" : bayState,
+        hudStats,
+      }) : renderCityPixelScene(districtById(cityId), { compact: true })}
+      <button type="button" class="primary-command print-bay-action" data-action="open-print-bay" ${pending && !collecting ? "" : "disabled"}>${buttonLabel}</button>
+    </div>
+  </section>`;
+}
+
+function renderBetaFindings() {
+  ensureBetaRuntimeState();
+  const beta = betaRuntimeConfig();
+  const betaState = betaRuntimeState();
+  if (!betaState) {
+    const loading = betaRuntimeLoadPromise || beta.lastStatus === "loading";
+    mainPanel.innerHTML = `<section class="panel beta-loading-panel">
+      <div class="blueprint-head">
+        <div>
+          <p class="eyebrow">Shared Beta</p>
+          <h2>Loading Server Print Bay</h2>
+          <p class="muted">This Fabs page is connected to your beta tester account. Local prototype Fabs are available again if you clear the beta token in Admin.</p>
+        </div>
+        <span class="pill">${loading ? "loading" : "server mode"}</span>
+      </div>
+      <div class="button-row">
+        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>${loading ? "Loading..." : "Retry Load"}</button>
+        <button type="button" data-view="admin">Open Admin</button>
+      </div>
+      ${beta.lastError ? `<p class="battery-empty">${escapeHtml(beta.lastError)}</p>` : ""}
+    </section>`;
+    return;
+  }
+
+  const cityId = state.district;
+  const cityFabs = betaFabsForCity(betaState, cityId);
+  const pendingByCity = betaPendingOutputsByCity(betaState);
+  const fabCards = cityFabs.map((fab) => {
+    const localFab = betaLocalFab(fab);
+    const definition = fabDefinition(localFab.type);
+    const pattern = betaField(fab, "printPattern", "print_pattern") || "random";
+    const rate = Number(betaField(fab, "rateGph", "rate_gph") || 0);
+    const grams = Number(betaField(fab, "storedGrams", "stored_grams") || 0);
+    const pending = Number(pendingByCity[cityId] || 0);
+    const cardState = pending ? "ready" : "printing";
+    return `<section class="fab-detail fab-summary-card state-${cardState}" style="--accent:${definition.accent}">
+      ${renderFabStaticTile(localFab, pending, cardState)}
+      <div>
+        <div class="blueprint-head">
+          <div>
+            <h2>${escapeHtml(definition.label)}</h2>
+            <p class="muted">Server fab - ${escapeHtml(betaCityName(betaState, cityId))}</p>
+          </div>
+          <span class="pill">${pending ? `${pending} sealed` : "Printing"}</span>
+        </div>
+        <div class="fab-summary-line">
+          <span>${escapeHtml(definition.group)}</span>
+          <span>${escapeHtml(pattern)}</span>
+          <span>${rate.toLocaleString()} g/hr</span>
+          <span>${grams.toFixed(1)}g staged</span>
+        </div>
+        <div class="button-row"><button type="button" disabled>Server Details Soon</button></div>
+      </div>
+    </section>`;
+  }).join("");
+  const ownedRows = (betaState.fabs || []).map((fab) => {
+    const localFab = betaLocalFab(fab);
+    const definition = fabDefinition(localFab.type);
+    return `<article class="item-card">
+      <div class="card-row"><h3>${escapeHtml(definition.label)}</h3><span class="pill">${escapeHtml(betaCityName(betaState, localFab.city))}</span></div>
+      <p class="muted">${Number(betaField(fab, "rateGph", "rate_gph") || 0).toLocaleString()} g/hr - ${escapeHtml(betaField(fab, "printPattern", "print_pattern") || "random")}</p>
+    </article>`;
+  }).join("");
+
+  mainPanel.innerHTML = `
+    ${renderBetaFabCityCommand(betaState, cityFabs, pendingByCity)}
+    ${renderBetaCollectedOutput(betaState, cityId)}
+    ${cityFabs.length ? `<div class="grid">${fabCards}</div>` : `<section class="empty-state">
+      <h2>No Server Fabs In ${escapeHtml(betaCityName(betaState, cityId))}</h2>
+      <p class="muted">Your beta account has no active fabs installed in this city yet.</p>
+      <div class="button-row">
+        <button type="button" data-view="cities">Open Map</button>
+        <button type="button" data-view="admin">Beta Admin</button>
+      </div>
+    </section>`}
+    <section class="panel" style="margin-bottom:14px">
+      <div class="blueprint-head">
+        <div>
+          <h2>Owned Server Fabs</h2>
+          <p class="muted">Read-only until fab shop actions move server-side.</p>
+        </div>
+        <span class="pill">${(betaState.fabs || []).length.toLocaleString()} server slots</span>
+      </div>
+      <div class="item-grid">${ownedRows || `<p class="muted">No server fabs found.</p>`}</div>
+    </section>`;
+}
+
+function betaShellInventory(betaState) {
+  const grouped = betaGroupByCity(betaState.inventories || []);
+  const pendingByCity = betaPendingOutputsByCity(betaState);
+  const cityIds = [...new Set([...Object.keys(grouped), ...Object.keys(pendingByCity)])]
+    .sort((a, b) => betaCityName(betaState, a).localeCompare(betaCityName(betaState, b)));
+  if (!cityIds.length) return `<article class="beta-shell-card"><h3>City Inventory</h3><p class="muted">No server inventory yet.</p></article>`;
+  return cityIds.map((cityId) => {
+    const rows = (grouped[cityId] || [])
+      .sort((a, b) => betaItem(betaState, betaField(a, "itemId", "item_id")).name.localeCompare(betaItem(betaState, betaField(b, "itemId", "item_id")).name))
+      .map((row) => `<div class="market-line">${betaItemChip(betaState, betaField(row, "itemId", "item_id"))}<strong>x${Number(row.qty || 0).toLocaleString()}</strong></div>`)
+      .join("");
+    return `<article class="beta-shell-card">
+      <div class="card-row"><h3>${escapeHtml(betaCityName(betaState, cityId))}</h3><span class="pill">${Number(pendingByCity[cityId] || 0).toLocaleString()} sealed</span></div>
+      ${rows || `<p class="muted">No stored items in this city.</p>`}
+    </article>`;
+  }).join("");
+}
+
+function betaShellFabs(betaState) {
+  const pendingByCity = betaPendingOutputsByCity(betaState);
+  const rows = (betaState.fabs || []).map((fab) => {
+    const cityId = betaField(fab, "cityId", "city_id");
+    const type = fab.type || "starter";
+    const definition = fabCatalog.find((entry) => entry.type === type);
+    const rate = Number(betaField(fab, "rateGph", "rate_gph") || 0);
+    const grams = Number(betaField(fab, "storedGrams", "stored_grams") || 0);
+    const pattern = betaField(fab, "printPattern", "print_pattern") || "random";
+    const pending = Number(pendingByCity[cityId] || 0);
+    return `<article class="beta-shell-card compact">
+      <div class="card-row"><h3>${escapeHtml(definition?.label || type)}</h3><span class="pill">${escapeHtml(betaCityName(betaState, cityId))}</span></div>
+      <div class="fab-metrics">
+        <div class="side-metric"><span>Rate</span><strong>${rate.toLocaleString()} g/hr</strong></div>
+        <div class="side-metric"><span>Stored</span><strong>${grams.toFixed(1)}g</strong></div>
+        <div class="side-metric"><span>Pattern</span><strong>${escapeHtml(pattern)}</strong></div>
+        <div class="side-metric"><span>Sealed</span><strong>${pending.toLocaleString()}</strong></div>
+      </div>
+      <div class="button-row">
+        <button type="button" data-admin="beta-collect-city-${cityId}" ${pending ? "" : "disabled"}>Collect Output</button>
+      </div>
+    </article>`;
+  }).join("");
+  return rows || `<article class="beta-shell-card"><h3>Fabs</h3><p class="muted">No server fabs found.</p></article>`;
+}
+
+function betaShellMarket(betaState) {
+  const listingRows = (betaState.market?.listings || []).slice(0, 8).map((listing) => {
+    const cityId = betaField(listing, "cityId", "city_id");
+    const itemId = betaField(listing, "itemId", "item_id");
+    return `<div class="market-line">${betaItemChip(betaState, itemId)}<strong>${Number(listing.qty || 0)} @ ${formatCredits(listing.price || 0)} · ${escapeHtml(betaCityName(betaState, cityId))}</strong></div>`;
+  }).join("");
+  const bidRows = (betaState.market?.bids || []).slice(0, 8).map((bid) => {
+    const cityId = betaField(bid, "cityId", "city_id");
+    const itemId = betaField(bid, "itemId", "item_id");
+    return `<div class="market-line">${betaItemChip(betaState, itemId)}<strong>${Number(bid.qty || 0)} @ ${formatCredits(bid.price || 0)} · ${escapeHtml(betaCityName(betaState, cityId))}</strong></div>`;
+  }).join("");
+  return `<div class="beta-shell-split">
+    <article class="beta-shell-card"><h3>Listings</h3>${listingRows || `<p class="muted">No active server listings.</p>`}</article>
+    <article class="beta-shell-card"><h3>Bids</h3>${bidRows || `<p class="muted">No active server bids.</p>`}</article>
+  </div>`;
+}
+
+function betaShipmentCargo(shipment) {
+  const raw = shipment.cargoJson || shipment.cargo || shipment.cargo_json || [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return [];
+  }
+}
+
+function betaShellShipments(betaState) {
+  const rows = (betaState.shipments || []).slice(0, 10).map((shipment) => {
+    const from = betaField(shipment, "fromCityId", "from_city_id");
+    const to = betaField(shipment, "toCityId", "to_city_id");
+    const vehicle = betaField(shipment, "vehicleItemId", "vehicle_item_id");
+    const arrival = betaField(shipment, "arrivalAt", "arrival_at");
+    const cargoUnits = betaShipmentCargo(shipment).reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
+    return `<div class="beta-shipment-row">
+      <span>${escapeHtml(betaCityName(betaState, from))} -> ${escapeHtml(betaCityName(betaState, to))}</span>
+      <strong>${escapeHtml(shipment.status || "unknown")}</strong>
+      <em>${betaItem(betaState, vehicle).name} · ${cargoUnits} cargo · ${escapeHtml(betaFormatDate(arrival))}</em>
+    </div>`;
+  }).join("");
+  return `<article class="beta-shell-card"><h3>Shipments</h3>${rows || `<p class="muted">No server shipments yet.</p>`}</article>`;
+}
+
+function renderBetaShell() {
+  const beta = window.NeonBetaClient?.readConfig?.() || {};
+  const betaState = betaStateSnapshot();
+  if (!betaState) {
+    mainPanel.innerHTML = `<section class="panel beta-shell">
+      <div class="blueprint-head">
+        <div>
+          <p class="eyebrow">Shared Beta</p>
+          <h2>Beta Shell</h2>
+          <p class="muted">Load a manual tester account from Admin to inspect server-owned state here.</p>
+        </div>
+        <span class="pill">server mode</span>
+      </div>
+      <div class="button-row">
+        <button type="button" data-view="admin">Open Admin Connection</button>
+        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Refresh State</button>
+      </div>
+      ${beta.lastError ? `<p class="battery-empty">${escapeHtml(beta.lastError)}</p>` : ""}
+    </section>`;
+    return;
+  }
+
+  const user = betaState.user || {};
+  const userName = betaField(user, "displayName", "display_name") || "Unknown Tester";
+  const homeCityId = betaField(user, "homeCityId", "home_city_id");
+  const currentCityId = betaField(user, "currentCityId", "current_city_id") || homeCityId;
+  const credits = Number(user.credits || 0);
+  const chips = Number(user.chips || 0);
+  const reputation = Number(user.reputation || 0);
+  const battery = Number(betaField(user, "batterySeconds", "battery_seconds") || 0);
+  const batteryCap = Number(betaField(user, "batteryCapacitySeconds", "battery_capacity_seconds") || 0);
+  const summary = window.NeonBetaClient?.summarizeState?.(betaState) || beta.lastSummary;
+
+  mainPanel.innerHTML = `<div class="beta-shell">
+    <section class="panel beta-shell-hero">
+      <div class="blueprint-head">
+        <div>
+          <p class="eyebrow">Shared Beta - Server Runtime</p>
+          <h2>${escapeHtml(userName)}</h2>
+          <p class="muted">Server state loaded from <code>${escapeHtml(beta.apiBase || "")}</code>. Print Bay collection is live; other gameplay actions are still local or read-only.</p>
+        </div>
+        <span class="pill">${escapeHtml(beta.lastLoadedAt ? new Date(beta.lastLoadedAt).toLocaleString() : "loaded")}</span>
+      </div>
+      ${betaState.beta?.notice ? `<p class="battery-empty">${escapeHtml(betaState.beta.notice)}</p>` : ""}
+      <div class="fab-metrics">
+        <div class="side-metric"><span>Credits</span><strong>${formatCredits(credits)}</strong></div>
+        <div class="side-metric"><span>Chips</span><strong>${chips.toLocaleString()}</strong></div>
+        <div class="side-metric"><span>Reputation</span><strong>${reputation.toLocaleString()}</strong></div>
+        <div class="side-metric"><span>Home</span><strong>${escapeHtml(betaCityName(betaState, homeCityId))}</strong></div>
+        <div class="side-metric"><span>Current City</span><strong>${escapeHtml(betaCityName(betaState, currentCityId))}</strong></div>
+        <div class="side-metric"><span>Battery</span><strong>${formatPower(battery)} / ${formatPower(batteryCap)}</strong></div>
+        <div class="side-metric"><span>Fabs</span><strong>${Number(summary?.fabs || 0).toLocaleString()}</strong></div>
+        <div class="side-metric"><span>Print Bay</span><strong>${Number(summary?.pendingOutputs || 0).toLocaleString()} sealed</strong></div>
+      </div>
+      <div class="button-row">
+        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Refresh State</button>
+        <button type="button" data-view="admin">Back To Admin</button>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="blueprint-head"><h2>City Storage</h2><span class="pill">server inventory</span></div>
+      <div class="beta-shell-grid">${betaShellInventory(betaState)}</div>
+    </section>
+    <section class="panel">
+      <div class="blueprint-head"><h2>Fabs & Print Bay</h2><span class="pill">collection live</span></div>
+      <div class="beta-shell-grid">${betaShellFabs(betaState)}</div>
+    </section>
+    <section class="panel">
+      <div class="blueprint-head"><h2>Market Orders</h2><span class="pill">server market</span></div>
+      ${betaShellMarket(betaState)}
+    </section>
+    <section class="panel">
+      <div class="blueprint-head"><h2>Dispatch Records</h2><span class="pill">server shipments</span></div>
+      ${betaShellShipments(betaState)}
+    </section>
+  </div>`;
+}
+
 function setAdminScenarioBase({ view = "profile", role = "drifter", cityId = "chrome-pier", homeChosen = true } = {}) {
   state = seedState(defaultState());
   state.homeCity = cityId;
@@ -2568,6 +3166,7 @@ function renderAdmin() {
   mainPanel.innerHTML = `
     <div class="admin-workbench">
       ${renderAdminTestLab()}
+      ${renderBetaClientPanel()}
 
       <section class="admin-section">
         <div class="blueprint-head">
@@ -2693,8 +3292,93 @@ function renderPlaceholder(title) {
   mainPanel.innerHTML = `<section class="panel"><h2>${title}</h2><p class="muted">This section is stubbed in for later systems.</p></section>`;
 }
 
+function readBetaClientForm() {
+  const current = window.NeonBetaClient?.readConfig?.() || {};
+  return {
+    apiBase: document.querySelector("#betaApiBase")?.value || current.apiBase || "http://127.0.0.1:8787",
+    token: document.querySelector("#betaToken")?.value || current.token || "",
+    adminToken: document.querySelector("#betaAdminToken")?.value || current.adminToken || "",
+    testerName: document.querySelector("#betaTesterName")?.value || current.testerName || "Beta Tester",
+    testerHomeCity: document.querySelector("#betaTesterHomeCity")?.value || current.testerHomeCity || STARTER_HOME_CITIES[0],
+  };
+}
+
+async function handleBetaAdmin(action) {
+  if (!window.NeonBetaClient) {
+    addFeed("Shared Beta", "client helper missing", "data");
+    render();
+    return true;
+  }
+  if (action.startsWith("beta-collect-city-")) {
+    await handleBetaCollectOutput(action.replace("beta-collect-city-", ""));
+    return true;
+  }
+  if (action === "beta-save-config") {
+    window.NeonBetaClient.writeConfig({ ...readBetaClientForm(), lastError: "", lastStatus: "saved" });
+    addFeed("Shared Beta", "connection saved", "data");
+    render();
+    return true;
+  }
+  if (action === "beta-clear-config") {
+    window.NeonBetaClient.clearConfig();
+    addFeed("Shared Beta", "connection cleared", "data");
+    render();
+    return true;
+  }
+  if (action === "beta-load-state") {
+    window.NeonBetaClient.writeConfig(readBetaClientForm());
+    addFeed("Shared Beta", "loading server state", "data");
+    render();
+    try {
+      await window.NeonBetaClient.loadState();
+      addFeed("Shared Beta", "server state loaded", "chip");
+    } catch (error) {
+      addFeed("Shared Beta", "load failed", "data");
+    }
+    render();
+    return true;
+  }
+  if (action === "beta-create-tester") {
+    window.NeonBetaClient.writeConfig(readBetaClientForm());
+    addFeed("Shared Beta", "creating tester", "data");
+    render();
+    try {
+      await window.NeonBetaClient.createTester();
+      addFeed("Shared Beta", "tester created", "chip");
+    } catch (error) {
+      addFeed("Shared Beta", "tester create failed", "data");
+    }
+    render();
+    return true;
+  }
+  return false;
+}
+
+async function handleBetaCollectOutput(cityId = state.district) {
+  if (!window.NeonBetaClient?.collectOutputs) {
+    addFeed("Print Bay", "server collection unavailable", "data");
+    render();
+    return true;
+  }
+  betaCollectingCity = cityId;
+  addFeed("Print Bay", `opening ${betaCityName(betaRuntimeState(), cityId)}`, "data");
+  render();
+  try {
+    const result = await window.NeonBetaClient.collectOutputs(cityId);
+    const count = Number(result?.collected?.length || 0);
+    addFeed("Print Bay", count ? `${count} server prints revealed` : "battery recharged", "chip");
+  } catch (error) {
+    addFeed("Print Bay", "server collect failed", "data");
+  } finally {
+    betaCollectingCity = "";
+    render();
+  }
+  return true;
+}
+
 function renderMainPanel() {
   if (state.activeView === "admin") renderAdmin();
+  else if (state.activeView === "beta-shell") renderBetaShell();
   else if (state.activeView === "contracts") renderContracts();
   else if (state.activeView === "home" || state.activeView === "profile") renderProfile();
   else if (state.activeView === "findings" || state.activeView === "fabs") renderFindings();
@@ -2894,6 +3578,7 @@ function renderConfirmLayer() {
 }
 
 function render() {
+  if (betaRuntimeActive()) ensureBetaRuntimeState();
   renderHeader();
   renderPanels();
   touchSessionState();
@@ -2988,7 +3673,8 @@ function syncActiveButtons() {
   });
 }
 
-function handleAdmin(action) {
+async function handleAdmin(action) {
+  if (action.startsWith("beta-") && await handleBetaAdmin(action)) return;
   const credits = Number(document.querySelector("#adminCredits")?.value || 0);
   const chips = Number(document.querySelector("#adminChips")?.value || 0);
   const itemName = document.querySelector("#adminItem")?.value || allItems()[0].name;
@@ -3483,6 +4169,10 @@ document.body.addEventListener("click", (event) => {
     return;
   }
   if (button.dataset.action === "claim-output" || button.dataset.action === "open-print-bay") {
+    if (betaRuntimeActive()) {
+      handleBetaCollectOutput(state.district);
+      return;
+    }
     runAction("open-print-bay");
     return;
   }
