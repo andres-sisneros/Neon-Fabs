@@ -6,7 +6,7 @@ Neon Fabs is still mostly a static browser prototype, with the first beta-server
 
 - Each browser gets its own local playtest save.
 - Friends can test the same build, but they do not share a market or world state yet.
-- A saved beta tester token can load server state and use server-backed Fabs / Print Bay collection.
+- A connected beta test account can load server state and use server-backed Fabs / Print Bay collection.
 - Shared markets, dispatch, and most other gameplay actions still come later.
 
 ## Local Phone Testing
@@ -79,15 +79,49 @@ See `BACKEND_PLAN.md` for the future server model.
 
 ## Shared Beta Backend Local Check
 
-The first Worker/D1 foundation is now in the repo. The browser client switches the Fabs / Print Bay flow to server mode when a beta tester token is saved.
+The first Worker/D1 foundation is now in the repo. The browser client switches the Fabs / Print Bay flow to server mode when a beta test account is connected.
 
-Useful local commands after Wrangler is available:
+Local setup:
+
+1. In PowerShell, from the project folder, create a local-only admin secret:
+
+```powershell
+Set-Content .dev.vars "ADMIN_TOKEN=dev-admin"
+```
+
+2. Prepare the local beta database:
 
 ```powershell
 npm run worker:schema
+```
+
+3. Start the Worker API and leave that terminal open:
+
+```powershell
 npm run worker:dev
 ```
 
+4. In a second terminal, start the static game page and leave it open:
+
+```powershell
+npm run serve
+```
+
+5. Open `http://127.0.0.1:8765/index.html`.
+
+The app's Admin page includes a Beta Test Account panel. Normal local/dev flow:
+
+1. Open Admin.
+2. Open Advanced Connection once.
+3. Set Worker API Base to `http://127.0.0.1:8787`.
+4. Set Admin Token to `dev-admin`.
+5. Save Connection.
+6. Choose a display name and home city.
+7. Press Create & Connect Test Account.
+8. Open Fabs and use the server-backed Print Bay flow.
+
 Before real deployment, replace the placeholder D1 database id in `wrangler.jsonc` and set an `ADMIN_TOKEN` secret with Wrangler. Manual tester creation uses `POST /api/admin/tester` with the `x-admin-token` header.
 
-The app's Admin page includes a Shared Beta Connection panel. Use it to save a Worker API base, paste a manual tester token, create a tester when you have the admin token, and inspect `/api/state`. Open Beta Shell from Admin to inspect that loaded server account. The normal Fabs tab now collects from `POST /api/fabs/collect` in beta mode; other player screens may still show local prototype data until their server slices land.
+Open Beta Shell from Admin to inspect the loaded server account. The normal Fabs tab now collects from `POST /api/fabs/collect` in beta mode; other player screens may still show local prototype data until their server slices land.
+
+Manual tester token paste is still available inside Advanced Connection as a debugging fallback, but it should not be part of normal playtesting.

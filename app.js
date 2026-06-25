@@ -31,8 +31,8 @@ function ensureBetaRuntimeState() {
   const config = betaRuntimeConfig();
   if (!config.token || betaRuntimeState() || betaRuntimeLoadPromise || config.lastStatus === "error" || !window.NeonBetaClient?.loadState) return;
   betaRuntimeLoadPromise = window.NeonBetaClient.loadState()
-    .then(() => addFeed("Shared Beta", "server state loaded", "chip"))
-    .catch(() => addFeed("Shared Beta", "server load failed", "data"))
+    .then(() => addFeed("Shared Beta", "beta account loaded", "chip"))
+    .catch(() => addFeed("Shared Beta", "could not load beta account", "data"))
     .finally(() => {
       betaRuntimeLoadPromise = null;
       render();
@@ -95,9 +95,9 @@ function renderBetaHeader() {
     `<article class="stat-card"><span>Print Bay</span><strong>${pending.toLocaleString()} sealed</strong></article>`,
   ];
   if (brandTitle) brandTitle.textContent = project.title || "Neon Fabs";
-  if (brandSubtitle) brandSubtitle.textContent = project.subtitle || "Shared beta";
+  if (brandSubtitle) brandSubtitle.textContent = project.subtitle || "Server Mode";
   if (walletSummary) walletSummary.textContent = `${formatCredits(credits)} | ${reputation.toLocaleString()} Rep | ${chips} chip${chips === 1 ? "" : "s"}`;
-  playerSummary.textContent = `${userName} | Shared Beta | Home: ${escapeHtml(betaCityName(betaState, homeCityId))} | Viewing: ${escapeHtml(betaCityName(betaState, currentCityId))} | Power: ${betaState ? `${formatPower(battery)} / ${formatPower(batteryCap)}` : "loading"}`;
+  playerSummary.textContent = `${userName} | Connected Beta Account | Home: ${escapeHtml(betaCityName(betaState, homeCityId))} | Viewing: ${escapeHtml(betaCityName(betaState, currentCityId))} | Power: ${betaState ? `${formatPower(battery)} / ${formatPower(batteryCap)}` : "loading"}`;
   screenTitle.textContent = viewTitle();
   if (backButton) backButton.hidden = !state.viewHistory?.length;
   quickStats.innerHTML = stats.join("");
@@ -138,7 +138,7 @@ function renderBetaRuntimeRightPanel() {
   const battery = Number(betaField(user, "batterySeconds", "battery_seconds") || 0);
   const batteryCap = Number(betaField(user, "batteryCapacitySeconds", "battery_capacity_seconds") || 0);
   rightPanel.innerHTML = `
-    <h2>Shared Beta</h2>
+    <h2>Connected Beta Account</h2>
     <div class="side-metric"><span>Status</span><strong>${escapeHtml(config.lastStatus || "idle")}</strong></div>
     <div class="side-metric"><span>Tester</span><strong>${escapeHtml(summary?.userName || "Loading")}</strong></div>
     <div class="side-metric"><span>Credits</span><strong>${formatCredits(summary?.credits || 0)}</strong></div>
@@ -2510,46 +2510,59 @@ function renderBetaClientPanel() {
   }).join("");
   const summary = beta.lastSummary;
   const statusLabel = beta.lastStatus === "connected"
-    ? "connected"
+    ? "connected account"
     : beta.lastStatus === "created"
-      ? "tester created"
+      ? "account created"
+      : beta.lastStatus === "setup-needed"
+        ? "setup needed"
       : beta.lastStatus === "error"
         ? "error"
         : beta.token
-          ? "token stored"
+          ? "connected account saved"
           : "not linked";
   const loadedAt = beta.lastLoadedAt ? new Date(beta.lastLoadedAt).toLocaleString() : "Never";
+  const accountName = summary?.userName || beta.testerName || "Beta Tester";
+  const needsSetup = beta.lastStatus === "setup-needed";
   return `<section class="admin-lab-panel beta-client-panel">
     <div class="blueprint-head">
       <div>
         <p class="eyebrow">Shared Beta</p>
-        <h2>Beta Server Connection</h2>
-        <p class="muted">Store a manual tester token and inspect <code>/api/state</code> without switching the playable prototype out of local mode.</p>
+        <h2>Beta Test Account</h2>
+        <p class="muted">Create or reconnect a server-backed test account. Credentials are kept in Advanced unless you need to debug them.</p>
       </div>
       <span class="pill">${statusLabel}</span>
     </div>
     <div class="admin-grid">
       <article class="admin-card">
-        <h3>Connection</h3>
-        <label class="search-field"><span>Worker API Base</span><input id="betaApiBase" type="url" value="${escapeHtml(beta.apiBase || "http://127.0.0.1:8787")}" placeholder="http://127.0.0.1:8787"></label>
-        <label class="search-field"><span>Tester Token</span><input id="betaToken" type="password" value="${escapeHtml(beta.token || "")}" placeholder="Paste issued beta token"></label>
-        <div class="button-row">
-          <button type="button" data-admin="beta-save-config">Save Token</button>
-          <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Load Beta State</button>
-          <button type="button" data-view="beta-shell">Open Beta Shell</button>
-          <button type="button" class="secondary" data-admin="beta-clear-config">Clear</button>
-        </div>
-      </article>
-      <article class="admin-card">
-        <h3>Create Manual Tester</h3>
-        <label class="search-field"><span>Admin Token</span><input id="betaAdminToken" type="password" value="${escapeHtml(beta.adminToken || "")}" placeholder="Worker ADMIN_TOKEN"></label>
-        <label class="search-field"><span>Display Name</span><input id="betaTesterName" type="text" value="${escapeHtml(beta.testerName || "Beta Tester")}" maxlength="40"></label>
+        <h3>Test Account</h3>
+        <p class="muted">Use this for normal beta playtesting. After connection, Fabs will use server mode automatically.</p>
+        <label class="search-field"><span>Display Name</span><input id="betaTesterName" type="text" value="${escapeHtml(beta.testerName || accountName)}" maxlength="40"></label>
         <label class="select-field"><span>Home City</span><select id="betaTesterHomeCity">${homeOptions}</select></label>
         <div class="button-row">
-          <button type="button" data-admin="beta-save-config">Save Fields</button>
-          <button type="button" data-admin="beta-create-tester" ${beta.adminToken ? "" : "disabled"}>Create Tester</button>
+          <button type="button" data-admin="beta-create-tester">Create &amp; Connect Test Account</button>
+          <button type="button" class="secondary" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Load Connected Account</button>
+          <button type="button" class="secondary" data-view="beta-shell" ${beta.token ? "" : "disabled"}>Open Beta Shell</button>
+          <button type="button" class="secondary" data-admin="beta-clear-config" ${beta.token || summary ? "" : "disabled"}>Clear Account</button>
         </div>
+        ${needsSetup && beta.lastError ? `<p class="battery-empty">${escapeHtml(beta.lastError)}</p>` : ""}
+        ${beta.adminToken ? "" : `<p class="muted">Add your admin token in Advanced Connection before creating a new test account.</p>`}
       </article>
+      <details class="admin-card admin-wide beta-advanced-card" ${needsSetup ? "open" : ""}>
+        <summary>
+          <span>Advanced Connection</span>
+          <strong>API and auth debugging</strong>
+        </summary>
+        <div class="beta-advanced-body">
+        <label class="search-field"><span>Worker API Base</span><input id="betaApiBase" type="url" value="${escapeHtml(beta.apiBase || "http://127.0.0.1:8787")}" placeholder="http://127.0.0.1:8787"></label>
+        <label class="search-field"><span>Admin Token</span><input id="betaAdminToken" type="password" value="${escapeHtml(beta.adminToken || "")}" placeholder="Worker ADMIN_TOKEN"></label>
+        <label class="search-field"><span>Debug Tester Token</span><input id="betaToken" type="password" value="${escapeHtml(beta.token || "")}" placeholder="Advanced fallback only"></label>
+        <div class="button-row">
+          <button type="button" data-admin="beta-save-config">Save Connection</button>
+          <button type="button" class="secondary" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Load Connected Account</button>
+        </div>
+        <p class="muted">Manual tester tokens are an internal auth fallback. Normal playtesting should use Create &amp; Connect above.</p>
+        </div>
+      </details>
       <article class="admin-card admin-wide">
         <div class="blueprint-head">
           <h3>Last Server State</h3>
@@ -2568,7 +2581,7 @@ function renderBetaClientPanel() {
                 <div class="side-metric"><span>Shipments</span><strong>${summary.shipments}</strong></div>
               </div>
               ${summary.notice ? `<p class="battery-empty">${escapeHtml(summary.notice)}</p>` : ""}`
-            : `<p class="muted">No beta state loaded yet. Create a tester or paste a token, then load state.</p>`
+            : `<p class="muted">No beta account loaded yet. Create and connect a test account, or use Advanced Connection for manual debugging.</p>`
         }
         ${beta.lastError ? `<p class="battery-empty">${escapeHtml(beta.lastError)}</p>` : ""}
       </article>
@@ -2754,16 +2767,16 @@ function renderBetaFindings() {
       <div class="blueprint-head">
         <div>
           <p class="eyebrow">Shared Beta</p>
-          <h2>Loading Server Print Bay</h2>
-          <p class="muted">This Fabs page is connected to your beta tester account. Local prototype Fabs are available again if you clear the beta token in Admin.</p>
+          <h2>${beta.lastStatus === "error" ? "Could Not Load Beta Account" : "Loading Server Print Bay"}</h2>
+          <p class="muted">This Fabs page uses your connected beta account. Clear the beta account in Admin to return to local prototype mode.</p>
         </div>
         <span class="pill">${loading ? "loading" : "server mode"}</span>
       </div>
       <div class="button-row">
-        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>${loading ? "Loading..." : "Retry Load"}</button>
+        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>${loading ? "Loading..." : "Retry Account Load"}</button>
         <button type="button" data-view="admin">Open Admin</button>
       </div>
-      ${beta.lastError ? `<p class="battery-empty">${escapeHtml(beta.lastError)}</p>` : ""}
+      ${beta.lastError ? `<p class="battery-empty">Could not load beta account. Open Admin to check the connection.</p>` : ""}
     </section>`;
     return;
   }
@@ -2927,13 +2940,13 @@ function renderBetaShell() {
         <div>
           <p class="eyebrow">Shared Beta</p>
           <h2>Beta Shell</h2>
-          <p class="muted">Load a manual tester account from Admin to inspect server-owned state here.</p>
+          <p class="muted">Create or load a beta test account from Admin to inspect server-owned state here.</p>
         </div>
         <span class="pill">server mode</span>
       </div>
       <div class="button-row">
-        <button type="button" data-view="admin">Open Admin Connection</button>
-        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Refresh State</button>
+        <button type="button" data-view="admin">Open Admin</button>
+        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Refresh Account</button>
       </div>
       ${beta.lastError ? `<p class="battery-empty">${escapeHtml(beta.lastError)}</p>` : ""}
     </section>`;
@@ -2957,7 +2970,7 @@ function renderBetaShell() {
         <div>
           <p class="eyebrow">Shared Beta - Server Runtime</p>
           <h2>${escapeHtml(userName)}</h2>
-          <p class="muted">Server state loaded from <code>${escapeHtml(beta.apiBase || "")}</code>. Print Bay collection is live; other gameplay actions are still local or read-only.</p>
+          <p class="muted">Connected beta account loaded. Print Bay collection is live; other gameplay actions are still local or read-only.</p>
         </div>
         <span class="pill">${escapeHtml(beta.lastLoadedAt ? new Date(beta.lastLoadedAt).toLocaleString() : "loaded")}</span>
       </div>
@@ -2973,7 +2986,7 @@ function renderBetaShell() {
         <div class="side-metric"><span>Print Bay</span><strong>${Number(summary?.pendingOutputs || 0).toLocaleString()} sealed</strong></div>
       </div>
       <div class="button-row">
-        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Refresh State</button>
+        <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>Refresh Account</button>
         <button type="button" data-view="admin">Back To Admin</button>
       </div>
     </section>
@@ -3315,38 +3328,50 @@ async function handleBetaAdmin(action) {
   }
   if (action === "beta-save-config") {
     window.NeonBetaClient.writeConfig({ ...readBetaClientForm(), lastError: "", lastStatus: "saved" });
-    addFeed("Shared Beta", "connection saved", "data");
+    addFeed("Shared Beta", "connection details saved", "data");
     render();
     return true;
   }
   if (action === "beta-clear-config") {
     window.NeonBetaClient.clearConfig();
-    addFeed("Shared Beta", "connection cleared", "data");
+    addFeed("Shared Beta", "beta account cleared", "data");
     render();
     return true;
   }
   if (action === "beta-load-state") {
     window.NeonBetaClient.writeConfig(readBetaClientForm());
-    addFeed("Shared Beta", "loading server state", "data");
+    addFeed("Shared Beta", "loading beta account", "data");
     render();
     try {
       await window.NeonBetaClient.loadState();
-      addFeed("Shared Beta", "server state loaded", "chip");
+      addFeed("Shared Beta", "beta account loaded", "chip");
     } catch (error) {
-      addFeed("Shared Beta", "load failed", "data");
+      addFeed("Shared Beta", "could not load beta account", "data");
     }
     render();
     return true;
   }
   if (action === "beta-create-tester") {
-    window.NeonBetaClient.writeConfig(readBetaClientForm());
-    addFeed("Shared Beta", "creating tester", "data");
+    const form = readBetaClientForm();
+    if (!String(form.adminToken || "").trim()) {
+      window.NeonBetaClient.writeConfig({
+        ...form,
+        lastStatus: "setup-needed",
+        lastError: "Add the Admin token in Advanced Connection, then press Create & Connect Test Account again.",
+      });
+      addFeed("Shared Beta", "admin token needed", "data");
+      render();
+      return true;
+    }
+    window.NeonBetaClient.writeConfig(form);
+    addFeed("Shared Beta", "creating test account", "data");
     render();
     try {
       await window.NeonBetaClient.createTester();
-      addFeed("Shared Beta", "tester created", "chip");
+      await window.NeonBetaClient.loadState();
+      addFeed("Shared Beta", "test account connected", "chip");
     } catch (error) {
-      addFeed("Shared Beta", "tester create failed", "data");
+      addFeed("Shared Beta", "could not connect test account", "data");
     }
     render();
     return true;

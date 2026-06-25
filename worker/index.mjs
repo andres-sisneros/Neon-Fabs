@@ -5,6 +5,11 @@ const BASE_BATTERY_SECONDS = 86400;
 const PATTERN_BATTERY_BONUS_SECONDS = 3600;
 const MAX_ROLLS_PER_TICK = 50;
 const SESSION_DAYS = 30;
+const CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type, authorization, x-admin-token",
+};
 
 const cities = [
   { id: "chrome-pier", name: "Chrome Pier", inventoryLimit: 96 },
@@ -50,6 +55,7 @@ function json(body, status = 200, headers = {}) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      ...CORS_HEADERS,
       ...headers,
     },
   });
@@ -241,6 +247,7 @@ async function routeRequest(request, env, repo) {
 }
 
 export async function handleRequest(request, env = {}, ctx = {}) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   const repo = env.__repo || createD1Repo(env.DB);
   try {
     await repo.ensureWorld();

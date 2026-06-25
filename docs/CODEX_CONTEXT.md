@@ -44,7 +44,7 @@ Near-term work should prioritize mechanics, economy clarity, Dispatch, inventory
 - `ui-first-session.js`: first-run, Profile command deck, Print Bay, and collection reveal rendering helpers.
 - `ui-intro.js`: first-load intro overlay that establishes the game world before the app UI.
 - `ui-market.js`: Market page rendering helpers for Sell, Buy, Orders, and focused item/category browsing.
-- `beta-client.js`: browser-side beta API helper for manual tester tokens, server state inspection, and server-backed Print Bay collection.
+- `beta-client.js`: browser-side beta API helper for connected test accounts, internal auth storage, server state inspection, and server-backed Print Bay collection.
 - `worker/index.mjs`: Cloudflare Worker API foundation for the future shared beta.
 - `worker/schema.sql`: D1 schema for beta accounts, inventories, fabs, markets, patterns, shipments, and logs.
 - `wrangler.jsonc`: Cloudflare Worker config with D1 binding placeholder.

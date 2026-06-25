@@ -6,12 +6,12 @@ When a beta tester account is connected, the normal Fabs page should open the re
 
 ## Scope
 
-- Treat a saved beta token as server runtime mode.
+- Treat a connected beta test account as server runtime mode.
 - Auto-load `/api/state` for beta account summaries.
 - Render server-owned fabs and pending Print Bay output on the normal Fabs page.
 - Collect city-scoped output with `POST /api/fabs/collect`.
 - Show a reveal panel for the newly collected server items.
-- Keep local Fabs collection as fallback when no beta token is configured.
+- Keep local Fabs collection as fallback when no beta account is connected.
 
 ## Out Of Scope
 
@@ -22,8 +22,8 @@ When a beta tester account is connected, the normal Fabs page should open the re
 
 ## Playtest Checklist
 
-- Clear the beta token and confirm local Fabs collection still works.
-- Save a beta token and open Fabs without visiting Admin first.
+- Clear the beta account and confirm local Fabs collection still works.
+- Connect a beta account and open Fabs without manually copying a token.
 - Confirm header and side panel show server credits, reputation, battery, and sealed output.
 - Collect Print Bay output in the viewed city.
 - Confirm revealed items appear and battery shows recharged.
@@ -34,3 +34,4 @@ When a beta tester account is connected, the normal Fabs page should open the re
 
 - This is the first normal player-facing server-owned gameplay action.
 - Other tabs may still show local prototype data until their server slices land.
+- Tester tokens are internal auth; Admin exposes them only inside Advanced Connection for debugging.

@@ -133,7 +133,11 @@
 
   async function createTester() {
     const config = readConfig();
-    if (!config.adminToken) throw new Error("Admin token required to create a tester.");
+    if (!config.adminToken) {
+      const message = "Add the Admin token in Advanced Connection before creating a test account.";
+      writeConfig({ lastStatus: "setup-needed", lastError: message });
+      throw new Error(message);
+    }
     writeConfig({ lastStatus: "creating", lastError: "" });
     try {
       const result = await apiFetch("/api/admin/tester", {

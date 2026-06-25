@@ -28,10 +28,10 @@ Early beta means a real shared online test for manually approved friends. It sho
    - API smoke tests.
 2. Server state mode:
    - Browser can load a beta account from `/api/state`.
-   - A saved beta token now makes server runtime the primary path for supported screens.
+   - A connected beta test account now makes server runtime the primary path for supported screens.
 3. Server fab loop:
    - Server ticks battery, grams, output rolls, collection, and inventory writes.
-   - Normal Fabs / Print Bay collection now uses `POST /api/fabs/collect` when a beta token is configured.
+   - Normal Fabs / Print Bay collection now uses `POST /api/fabs/collect` when a beta test account is connected.
 4. Shared market:
    - Server owns listings, bids, buys, sells, and transaction history.
 5. Patterns and reputation:
@@ -53,9 +53,9 @@ The first foundation slice now exists:
 - `worker/schema.sql`: D1 schema.
 - `wrangler.jsonc`: Cloudflare Worker config with D1 binding placeholder.
 - `tests/beta-api.test.mjs`: API contract tests.
-- `beta-client.js`: browser-side beta API helper for storing manual tester tokens and loading `/api/state`.
+- `beta-client.js`: browser-side beta API helper for connected test accounts, internal auth, and `/api/state` loading.
 
-Admin has a Shared Beta Connection panel that can create manual testers against a live Worker and inspect server state from `/api/state`. A Beta Shell can open that loaded server state in a player-like layout. Normal Fabs / Print Bay collection now switches to server-owned state whenever a beta tester token is saved; clearing the token returns to local prototype mode.
+Admin has a Beta Test Account panel that can create and connect manual testers against a live Worker, then inspect server state from `/api/state`. A Beta Shell can open that loaded server state in a player-like layout. Normal Fabs / Print Bay collection now switches to server-owned state whenever a beta test account is connected; clearing the account returns to local prototype mode. Tester tokens remain internal auth and are only exposed inside Advanced Connection for debugging.
 
 ## Release Gates
 

@@ -277,8 +277,29 @@ test("admin test lab presets jump to useful playtest states", async ({ page }) =
   expect(snapshot.queued).toBe(4);
 });
 
-test("admin beta connection can save token and inspect server state", async ({ page }) => {
+test("admin beta test account can create, connect, and clear server mode", async ({ page }) => {
+  let createCalled = false;
+  let stateAuthHeader = "";
+  await page.route("https://beta.test/api/admin/tester", async (route) => {
+    createCalled = true;
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().headers()["x-admin-token"]).toBe("admin-secret");
+    expect(route.request().postDataJSON()).toEqual({
+      displayName: "Friend Tester",
+      homeCityId: "chrome-pier",
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        token: "tester-token",
+        user: { displayName: "Friend Tester", homeCityId: "chrome-pier", role: "drifter" },
+        notice: "Early shared beta data may be wiped.",
+      }),
+    });
+  });
   await page.route("https://beta.test/api/state", async (route) => {
+    stateAuthHeader = route.request().headers().authorization || "";
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -328,15 +349,34 @@ test("admin beta connection can save token and inspect server state", async ({ p
     render();
   });
 
-  await expect(page.getByRole("heading", { name: "Beta Server Connection" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Beta Test Account" })).toBeVisible();
+  await expect(page.locator("#betaToken")).toBeHidden();
+  await page.getByRole("button", { name: "Create & Connect Test Account" }).click();
+  await expect(page.locator(".beta-client-panel")).toContainText("Add the Admin token in Advanced Connection");
+  await expect(page.locator(".beta-advanced-card")).toHaveAttribute("open", "");
+  await expect(page.locator("#betaToken")).toBeVisible();
+  expect(createCalled).toBe(false);
   await page.locator("#betaApiBase").fill("https://beta.test");
-  await page.locator("#betaToken").fill("tester-token");
-  await page.getByRole("button", { name: "Save Token" }).click();
-  await page.getByRole("button", { name: "Load Beta State" }).click();
+  await page.locator("#betaAdminToken").fill("admin-secret");
+  await page.locator("#betaTesterName").fill("Friend Tester");
+  await page.locator("#betaTesterHomeCity").selectOption("chrome-pier");
+  await page.getByRole("button", { name: "Create & Connect Test Account" }).click();
 
   await expect(page.locator(".beta-client-panel")).toContainText("Friend Tester");
   await expect(page.locator(".beta-client-panel")).toContainText("123cr");
   await expect(page.locator(".beta-client-panel")).toContainText("Early shared beta data may be wiped.");
+  expect(createCalled).toBe(true);
+  expect(stateAuthHeader).toBe("Bearer tester-token");
+
+  await page.evaluate(() => {
+    state.activeView = "fabs";
+    render();
+  });
+  await expect(page.locator("#mainPanel")).toContainText("Server fab");
+  await page.evaluate(() => {
+    state.activeView = "admin";
+    render();
+  });
 
   await page.getByRole("button", { name: "Open Beta Shell" }).click();
   const shell = page.locator(".beta-shell");
@@ -356,6 +396,15 @@ test("admin beta connection can save token and inspect server state", async ({ p
   await expect(shell.getByRole("button", { name: "Collect Output" })).toBeVisible();
   await expect(shell.getByRole("button", { name: "Send Shipment" })).toHaveCount(0);
   await expect(shell.getByRole("button", { name: "Create Meld" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Back To Admin" }).click();
+  await page.getByRole("button", { name: "Clear Account" }).click();
+  await expect.poll(() => page.evaluate(() => window.NeonBetaClient.readConfig().token)).toBe("");
+  await page.evaluate(() => {
+    state.activeView = "fabs";
+    render();
+  });
+  await expect(page.locator("#mainPanel")).not.toContainText("Server fab");
 });
 
 test("beta mode collects Print Bay output from the normal Fabs page", async ({ page }) => {
