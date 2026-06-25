@@ -55,7 +55,7 @@ The first foundation slice now exists:
 - `tests/beta-api.test.mjs`: API contract tests.
 - `beta-client.js`: browser-side beta API helper for connected test accounts, internal auth, and `/api/state` loading.
 
-Admin has a Beta Test Account panel that can create and connect manual testers against a live Worker, then inspect server state from `/api/state`. A Beta Shell can open that loaded server state in a player-like layout. Normal Fabs / Print Bay collection now switches to server-owned state whenever a beta test account is connected; clearing the account returns to local prototype mode. Tester tokens remain internal auth and are only exposed inside Advanced Connection for debugging.
+Admin has a Beta Test Account panel that can create and connect manual testers against a live Worker, then inspect server state from `/api/state`. A Beta Shell can open that loaded server state in a player-like layout. Normal connected-beta screens now render the playable core loop from server state: Profile, Fabs, Inventory, Patterns, Market, Map, and Merchant Dispatch. Server actions are wired for Print Bay collection, first pattern creation, player-only market orders, recycling, shipment launch, shipment arrival, freight payout, and PvE-lite shipment history. Admin can grant a small beta test bundle and advance one shared beta clock for all accounts. Clearing the account returns to local prototype mode. Tester tokens remain internal auth and are only exposed inside Advanced Connection for debugging.
 
 ## Release Gates
 

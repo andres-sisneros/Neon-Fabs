@@ -73,7 +73,8 @@ Parked until core mechanics feel steadier.
 
 - Keep local prototype mode working while server mode is added behind an explicit beta path.
 - Use Cloudflare Worker API and D1 for the friends-only shared beta.
-- Implement server-owned systems in order: tester accounts, state loading, fabs/inventory, markets, patterns/reputation, then Dispatch PvE lite.
+- Server mode now owns the playable core loop slice: Profile, Fabs, Inventory, Patterns, Market, Map, and Merchant Dispatch render from beta server state when connected.
+- Next backend slices should harden server mode instead of expanding unsupported systems too early: inventory capacity rules, clearer market review tray parity, beta account management, and D1 deployment checks.
 - Keep beta progress wipeable until economy and schema are stable.
 
 ## Later

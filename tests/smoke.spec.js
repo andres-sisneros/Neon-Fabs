@@ -490,6 +490,185 @@ test("beta mode collects Print Bay output from the normal Fabs page", async ({ p
   expect(collectCalls).toBe(1);
 });
 
+test("connected beta account can use the server-owned core loop screens", async ({ page }) => {
+  const pattern = {
+    id: "common-starter-meld",
+    name: "Common Starter Meld",
+    type: "starter",
+    rarity: "green",
+    repReward: 10,
+    recipe: {
+      "common-starter-a": 2,
+      "common-starter-b": 1,
+      "common-starter-c": 1,
+    },
+  };
+  const routes = [{ from: "chrome-pier", to: "lowline", distanceMiles: 72, kind: "land", baseHours: 2 }];
+  const cities = [
+    { id: "chrome-pier", name: "Chrome Pier", inventoryLimit: 96 },
+    { id: "lowline", name: "Lowline", inventoryLimit: 96 },
+  ];
+  const items = [
+    { id: "common-starter-a", name: "Common Starter Component A", rarity: "green", category: "meld", value: 8 },
+    { id: "common-starter-b", name: "Common Starter Component B", rarity: "green", category: "meld", value: 8 },
+    { id: "common-starter-c", name: "Common Starter Component C", rarity: "green", category: "meld", value: 8 },
+    { id: "uncommon-starter-a", name: "Uncommon Starter Component A", rarity: "blue", category: "meld", value: 35 },
+    { id: "common-runner", name: "Common Runner", rarity: "green", category: "vehicle", value: 70 },
+  ];
+  let serverState = {
+    beta: { wipesExpected: true, notice: "Early shared beta data may be wiped.", now: "2026-06-25T12:00:00.000Z", clockOffsetMs: 0 },
+    user: {
+      id: "user-1",
+      displayName: "Loop Tester",
+      homeCityId: "chrome-pier",
+      currentCityId: "chrome-pier",
+      credits: 200,
+      chips: 1,
+      reputation: 0,
+      batterySeconds: 86400,
+      batteryCapacitySeconds: 86400,
+    },
+    cities,
+    items,
+    patterns: [pattern],
+    ownedPatterns: [],
+    inventories: [
+      { cityId: "chrome-pier", itemId: "common-starter-a", qty: 4 },
+      { cityId: "chrome-pier", itemId: "common-starter-b", qty: 1 },
+      { cityId: "chrome-pier", itemId: "common-starter-c", qty: 1 },
+      { cityId: "chrome-pier", itemId: "uncommon-starter-a", qty: 2 },
+      { cityId: "chrome-pier", itemId: "common-runner", qty: 1 },
+    ],
+    fabs: [{ id: "fab-1", type: "starter", cityId: "chrome-pier", rateGph: 12, storedGrams: 0, printPattern: "random" }],
+    pendingOutputs: [],
+    market: { listings: [], bids: [] },
+    shipments: [],
+    routes,
+  };
+  const removeInventory = (cityId, itemId, qty) => {
+    const row = serverState.inventories.find((entry) => entry.cityId === cityId && entry.itemId === itemId);
+    if (!row) return;
+    row.qty -= qty;
+    serverState.inventories = serverState.inventories.filter((entry) => entry.qty > 0);
+  };
+  const addInventory = (cityId, itemId, qty) => {
+    const row = serverState.inventories.find((entry) => entry.cityId === cityId && entry.itemId === itemId);
+    if (row) row.qty += qty;
+    else serverState.inventories.push({ cityId, itemId, qty });
+  };
+
+  await page.route("https://beta.test/api/state", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(serverState) });
+  });
+  await page.route("https://beta.test/api/patterns/create", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ patternId: "common-starter-meld" });
+    for (const [itemId, qty] of Object.entries(pattern.recipe)) removeInventory("chrome-pier", itemId, qty);
+    serverState.ownedPatterns = [{ patternId: pattern.id }];
+    serverState.user.reputation += pattern.repReward;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ created: pattern, state: serverState }) });
+  });
+  await page.route("https://beta.test/api/market/list", async (route) => {
+    const body = route.request().postDataJSON();
+    removeInventory(body.cityId, body.itemId, body.qty);
+    serverState.market.listings.push({ id: "listing-1", cityId: body.cityId, itemId: body.itemId, sellerUserId: "user-1", qty: body.qty, price: body.price });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ listing: serverState.market.listings[0], state: serverState }) });
+  });
+  await page.route("https://beta.test/api/inventory/recycle", async (route) => {
+    const body = route.request().postDataJSON();
+    removeInventory(body.cityId, body.itemId, body.qty);
+    serverState.user.credits += body.qty;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ recycled: body.qty, state: serverState }) });
+  });
+  await page.route("https://beta.test/api/dispatch/send", async (route) => {
+    const body = route.request().postDataJSON();
+    removeInventory(body.fromCityId, body.vehicleItemId, 1);
+    body.cargo.forEach((entry) => removeInventory(body.fromCityId, entry.itemId, entry.qty));
+    serverState.shipments.push({
+      id: "ship-1",
+      userId: "user-1",
+      fromCityId: body.fromCityId,
+      toCityId: body.toCityId,
+      vehicleItemId: body.vehicleItemId,
+      cargo: body.cargo,
+      status: "in_transit",
+      arrivalAt: "2026-06-25T14:00:00.000Z",
+      encounterJson: { mode: "pve-lite", rolled: false },
+    });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ shipment: serverState.shipments[0], state: serverState }) });
+  });
+  await page.route("https://beta.test/api/admin/time/advance", async (route) => {
+    expect(route.request().headers()["x-admin-token"]).toBe("admin-secret");
+    const shipment = serverState.shipments[0];
+    shipment.status = "arrived";
+    shipment.encounterJson = {
+      mode: "pve-lite",
+      rolled: true,
+      note: "No contact. The convoy crossed the route cleanly.",
+      freightPayout: 42,
+    };
+    addInventory(shipment.toCityId, shipment.vehicleItemId, 1);
+    shipment.cargo.forEach((entry) => addInventory(shipment.toCityId, entry.itemId, entry.qty));
+    serverState.user.credits += 42;
+    serverState.beta.clockOffsetMs = 7200000;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ advancedHours: 2, state: serverState }) });
+  });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("neon-fabs.intro.v1.seen", "yes");
+    window.localStorage.setItem("neon-fabs.beta-client.v1", JSON.stringify({
+      apiBase: "https://beta.test",
+      token: "tester-token",
+      adminToken: "admin-secret",
+      lastStatus: "saved",
+    }));
+  });
+
+  await openGame(page, "profile", "drifter");
+  await expect(page.locator("#mainPanel")).toContainText("Loop Tester");
+  await expect(page.locator("#walletSummary")).toContainText("200cr");
+
+  await page.getByRole("button", { name: "Patterns", exact: true }).click();
+  await expect(page.locator("#mainPanel")).toContainText("Common Starter Meld");
+  await page.getByRole("button", { name: "Create Pattern" }).click();
+  await expect(page.locator("#walletSummary")).toContainText("10 Rep");
+  await expect(page.getByRole("button", { name: "Already Created" })).toBeVisible();
+
+  await page.evaluate(() => {
+    state.marketMode = "sell";
+    state.activeView = "shop";
+    render();
+  });
+  await page.locator('[data-beta-list-item="common-starter-a"]').click();
+  await expect.poll(() => page.evaluate(() => window.NeonBetaClient.readLastState().market.listings.length)).toBe(1);
+  await page.locator('[data-beta-recycle-item="common-starter-a"]').click();
+  await expect(page.locator("#walletSummary")).toContainText("201cr");
+
+  await page.evaluate(() => {
+    state.activeView = "shipments";
+    render();
+  });
+  await expect(page.getByRole("button", { name: "Send Shipment" })).toBeVisible();
+  await page.getByRole("button", { name: "Send Shipment" }).click();
+  await expect.poll(() => page.evaluate(() => window.NeonBetaClient.readLastState().shipments.length)).toBe(1);
+  await expect(page.locator("#mainPanel")).toContainText("in_transit");
+
+  await page.evaluate(() => {
+    state.activeView = "admin";
+    render();
+  });
+  await page.locator("#betaAdvanceHours").fill("2");
+  await page.getByRole("button", { name: "Advance Global Time" }).click();
+  await expect(page.locator(".beta-client-panel")).toContainText("243cr");
+
+  await page.evaluate(() => {
+    state.activeView = "inventory";
+    state.district = "lowline";
+    render();
+  });
+  await expect(page.locator("#mainPanel")).toContainText("Lowline Inventory");
+  await expect(page.locator("#mainPanel")).toContainText("Common Runner");
+  await expect(page.locator("#mainPanel")).toContainText("Uncommon Starter Component A");
+});
+
 test("melds page uses compact visual set cards", async ({ page }) => {
   await openGame(page, "melds", "drifter");
   await page.evaluate(() => {

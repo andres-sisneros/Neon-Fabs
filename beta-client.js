@@ -93,6 +93,19 @@
     }));
   }
 
+  function storeState(state, patch = {}) {
+    if (!state) return writeConfig(patch);
+    global.neonBetaLastState = state;
+    return writeConfig({
+      lastStatus: "connected",
+      lastLoadedAt: new Date().toISOString(),
+      lastSummary: summarizeState(state),
+      lastState: state,
+      lastError: "",
+      ...patch,
+    });
+  }
+
   async function apiFetch(path, options = {}) {
     const config = readConfig();
     const headers = {
@@ -115,14 +128,8 @@
     writeConfig({ lastStatus: "loading", lastError: "" });
     try {
       const state = await apiFetch("/api/state");
-      global.neonBetaLastState = state;
-      writeConfig({
-        lastStatus: "connected",
-        lastLoadedAt: new Date().toISOString(),
-        lastSummary: summarizeState(state),
-        lastState: state,
+      storeState(state, {
         lastCollection: null,
-        lastError: "",
       });
       return state;
     } catch (error) {
@@ -193,14 +200,8 @@
         rechargedTo: result.rechargedTo || result.recharged_to || null,
         at: new Date().toISOString(),
       };
-      global.neonBetaLastState = nextState;
-      writeConfig({
-        lastStatus: "connected",
-        lastLoadedAt: new Date().toISOString(),
-        lastSummary: summarizeState(nextState),
-        lastState: nextState,
+      storeState(nextState, {
         lastCollection,
-        lastError: "",
       });
       return { ...result, state: nextState, collected, lastCollection };
     } catch (error) {
@@ -209,14 +210,122 @@
     }
   }
 
+  async function statefulPost(path, body = {}, options = {}) {
+    writeConfig({ lastStatus: options.status || "syncing", lastError: "" });
+    try {
+      const result = await apiFetch(path, {
+        method: "POST",
+        body,
+        admin: Boolean(options.admin),
+      });
+      const nextState = result.state || await apiFetch("/api/state");
+      storeState(nextState, { lastCollection: options.keepCollection ? readConfig().lastCollection : null });
+      return { ...result, state: nextState };
+    } catch (error) {
+      writeConfig({ lastStatus: "error", lastError: error.message || options.errorMessage || "Server action failed." });
+      throw error;
+    }
+  }
+
+  async function createPattern(patternId) {
+    return statefulPost("/api/patterns/create", { patternId }, {
+      status: "creating-pattern",
+      errorMessage: "Unable to create pattern.",
+    });
+  }
+
+  async function createListing({ cityId, itemId, qty = 1, price = 1 }) {
+    return statefulPost("/api/market/list", { cityId, itemId, qty, price }, {
+      status: "listing",
+      errorMessage: "Unable to list item.",
+    });
+  }
+
+  async function createBid({ cityId, itemId, qty = 1, price = 1 }) {
+    return statefulPost("/api/market/bid", { cityId, itemId, qty, price }, {
+      status: "placing-bid",
+      errorMessage: "Unable to place bid.",
+    });
+  }
+
+  async function buyListing(listingId, qty = 1) {
+    return statefulPost("/api/market/buy", { listingId, qty }, {
+      status: "buying",
+      errorMessage: "Unable to buy listing.",
+    });
+  }
+
+  async function sellToBid(bidId, qty = 1) {
+    return statefulPost("/api/market/sell", { bidId, qty }, {
+      status: "selling",
+      errorMessage: "Unable to sell to bid.",
+    });
+  }
+
+  async function cancelListing(listingId) {
+    return statefulPost("/api/market/cancel-listing", { listingId }, {
+      status: "canceling-listing",
+      errorMessage: "Unable to cancel listing.",
+    });
+  }
+
+  async function cancelBid(bidId) {
+    return statefulPost("/api/market/cancel-bid", { bidId }, {
+      status: "canceling-bid",
+      errorMessage: "Unable to cancel bid.",
+    });
+  }
+
+  async function recycleInventory({ cityId, itemId, qty = 1 }) {
+    return statefulPost("/api/inventory/recycle", { cityId, itemId, qty }, {
+      status: "recycling",
+      errorMessage: "Unable to recycle item.",
+    });
+  }
+
+  async function sendShipment({ fromCityId, toCityId, vehicleItemId, cargo = [] }) {
+    return statefulPost("/api/dispatch/send", { fromCityId, toCityId, vehicleItemId, cargo }, {
+      status: "dispatching",
+      errorMessage: "Unable to send shipment.",
+    });
+  }
+
+  async function advanceTime(hours = 1) {
+    return statefulPost("/api/admin/time/advance", { hours }, {
+      admin: true,
+      status: "advancing-time",
+      errorMessage: "Unable to advance beta time.",
+    });
+  }
+
+  async function grantBundle(cityId) {
+    return statefulPost("/api/admin/grant-bundle", { cityId }, {
+      admin: true,
+      status: "granting-bundle",
+      errorMessage: "Unable to grant test bundle.",
+    });
+  }
+
   global.NeonBetaClient = {
     readConfig,
     writeConfig,
     clearConfig,
     readLastState: () => global.neonBetaLastState || readConfig().lastState || null,
     loadState,
+    refreshState: loadState,
     createTester,
     collectOutputs,
+    createPattern,
+    createListing,
+    createBid,
+    buyListing,
+    sellToBid,
+    cancelListing,
+    cancelBid,
+    recycleInventory,
+    sendShipment,
+    advanceTime,
+    grantBundle,
     summarizeState,
   };
 })(window);

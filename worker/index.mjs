@@ -49,6 +49,34 @@ const routes = [
   { from: "lowline", to: "helix", distanceMiles: 64, kind: "land", baseHours: 2 },
 ];
 
+function shipmentCargoUnits(cargo = []) {
+  return cargo.reduce((sum, entry) => sum + Math.max(0, Number(entry.qty || 0)), 0);
+}
+
+function shipmentCargoValue(cargo = []) {
+  return cargo.reduce((sum, entry) => sum + (itemById(entry.itemId)?.value || 1) * Math.max(0, Number(entry.qty || 0)), 0);
+}
+
+function merchantFreightPayout(cargo = [], route = null) {
+  const units = Math.max(1, shipmentCargoUnits(cargo));
+  const miles = Math.max(1, Number(route?.distanceMiles || 1));
+  return Math.max(1, Math.round((miles * 0.45 * units) + (8 * units) + (shipmentCargoValue(cargo) * 0.08)));
+}
+
+function pveLiteEncounterResult(cargo = [], route = null) {
+  const units = shipmentCargoUnits(cargo);
+  const miles = Number(route?.distanceMiles || 0);
+  const quiet = units <= 1 && miles <= 80;
+  return {
+    mode: "pve-lite",
+    rolled: true,
+    outcome: quiet ? "clear" : "static-sweep",
+    note: quiet
+      ? "No contact. The convoy crossed the route cleanly."
+      : "Static skimmers shadowed the convoy, but the crew pushed through without cargo loss.",
+  };
+}
+
 function json(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,
@@ -159,8 +187,9 @@ function starterRollItemId() {
 }
 
 async function withUserState(repo, userId) {
-  await repo.tickUser(userId, Date.now());
-  await repo.resolveShipments(userId, Date.now());
+  const now = await repo.now();
+  await repo.tickUser(userId, now);
+  await repo.resolveShipments(userId, now);
   return repo.stateForUser(userId);
 }
 
@@ -225,6 +254,18 @@ async function routeRequest(request, env, repo) {
     return json({ ...result, state: await withUserState(repo, userId) }, 201);
   }
 
+  if (path === "/api/market/cancel-listing" && request.method === "POST") {
+    const body = await readJson(request);
+    const result = await repo.cancelListing(userId, body.listingId);
+    return json({ ...result, state: await withUserState(repo, userId) });
+  }
+
+  if (path === "/api/market/cancel-bid" && request.method === "POST") {
+    const body = await readJson(request);
+    const result = await repo.cancelBid(userId, body.bidId);
+    return json({ ...result, state: await withUserState(repo, userId) });
+  }
+
   if (path === "/api/market/buy" && request.method === "POST") {
     const body = await readJson(request);
     const result = await repo.buyListing(userId, body.listingId, body.qty || 1);
@@ -237,10 +278,30 @@ async function routeRequest(request, env, repo) {
     return json({ ...result, state: await withUserState(repo, userId) });
   }
 
+  if (path === "/api/inventory/recycle" && request.method === "POST") {
+    const body = await readJson(request);
+    const result = await repo.recycleInventory(userId, body);
+    return json({ ...result, state: await withUserState(repo, userId) });
+  }
+
   if (path === "/api/dispatch/send" && request.method === "POST") {
     const body = await readJson(request);
     const result = await repo.sendShipment(userId, body);
     return json({ ...result, state: await withUserState(repo, userId) }, 201);
+  }
+
+  if (path === "/api/admin/time/advance" && request.method === "POST") {
+    await requireAdmin(request, env);
+    const body = await readJson(request);
+    const result = await repo.advanceTime(body.hours || 0);
+    return json({ ...result, state: await withUserState(repo, userId) });
+  }
+
+  if (path === "/api/admin/grant-bundle" && request.method === "POST") {
+    await requireAdmin(request, env);
+    const body = await readJson(request);
+    const result = await repo.grantTestBundle(userId, body.cityId || null);
+    return json({ ...result, state: await withUserState(repo, userId) });
   }
 
   return errorJson("Not found.", 404);
@@ -284,8 +345,40 @@ function createD1Repo(db) {
     await run("DELETE FROM inventories WHERE qty <= 0");
   }
 
+  async function clockOffsetMs() {
+    const row = await first("SELECT value FROM beta_meta WHERE key = 'clock_offset_ms'");
+    return Number(row?.value || 0);
+  }
+
+  async function currentTimeMs() {
+    return Date.now() + await clockOffsetMs();
+  }
+
+  async function currentIso() {
+    return nowIso(await currentTimeMs());
+  }
+
+  async function setClockOffsetMs(nextOffset) {
+    await run(
+      `INSERT INTO beta_meta (key, value, updated_at)
+       VALUES ('clock_offset_ms', ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      String(Math.round(nextOffset)),
+      nowIso(),
+    );
+  }
+
   return {
+    async now() {
+      return currentTimeMs();
+    },
+
     async ensureWorld() {
+      await run("CREATE TABLE IF NOT EXISTS beta_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)");
+      await run(
+        "INSERT OR IGNORE INTO beta_meta (key, value, updated_at) VALUES ('clock_offset_ms', '0', ?)",
+        nowIso(),
+      );
       for (const city of cities) {
         await run(
           "INSERT OR IGNORE INTO cities (id, name, inventory_limit) VALUES (?, ?, ?)",
@@ -353,7 +446,7 @@ function createD1Repo(db) {
       const userId = randomId("user");
       const sessionId = randomId("session");
       const token = crypto.randomUUID();
-      const createdAt = nowIso();
+      const createdAt = await currentIso();
       await run(
         `INSERT INTO users
          (id, display_name, home_city_id, current_city_id, role, credits, chips, reputation, battery_seconds, battery_capacity_seconds, last_tick_at, created_at, updated_at)
@@ -429,7 +522,12 @@ function createD1Repo(db) {
       const bids = await all("SELECT * FROM market_bids WHERE qty > 0 ORDER BY created_at DESC LIMIT 100");
       const shipments = await all("SELECT * FROM shipments WHERE user_id = ? ORDER BY created_at DESC LIMIT 50", userId);
       return {
-        beta: { wipesExpected: true, notice: BETA_WIPE_NOTICE },
+        beta: {
+          wipesExpected: true,
+          notice: BETA_WIPE_NOTICE,
+          now: nowIso(await currentTimeMs()),
+          clockOffsetMs: await clockOffsetMs(),
+        },
         user,
         cities,
         items,
@@ -486,9 +584,13 @@ function createD1Repo(db) {
       );
       for (const shipment of due) {
         const cargo = shipment.cargo_json ? JSON.parse(shipment.cargo_json) : [];
+        const route = routeFor(shipment.from_city_id, shipment.to_city_id);
+        const payout = merchantFreightPayout(cargo, route);
+        const encounter = pveLiteEncounterResult(cargo, route);
         await upsertInventory(userId, shipment.to_city_id, shipment.vehicle_item_id, 1);
         for (const entry of cargo) await upsertInventory(userId, shipment.to_city_id, entry.itemId, Number(entry.qty || 0));
-        await run("UPDATE shipments SET status = 'arrived', resolved_at = ? WHERE id = ?", nowIso(now), shipment.id);
+        await run("UPDATE users SET credits = credits + ?, updated_at = ? WHERE id = ?", payout, nowIso(now), userId);
+        await run("UPDATE shipments SET status = 'arrived', encounter_json = ?, resolved_at = ? WHERE id = ?", JSON.stringify({ ...encounter, freightPayout: payout }), nowIso(now), shipment.id);
       }
     },
 
@@ -505,12 +607,12 @@ function createD1Repo(db) {
       );
       for (const output of outputs) {
         await upsertInventory(userId, output.cityId, output.itemId, 1);
-        await run("UPDATE fab_outputs SET hidden = 0, collected_at = ? WHERE id = ?", nowIso(), output.id);
+        await run("UPDATE fab_outputs SET hidden = 0, collected_at = ? WHERE id = ?", await currentIso(), output.id);
       }
       const user = await first("SELECT battery_capacity_seconds FROM users WHERE id = ?", userId);
       await run(
         "UPDATE users SET battery_seconds = battery_capacity_seconds, updated_at = ? WHERE id = ?",
-        nowIso(),
+        await currentIso(),
         userId,
       );
       return { collected: outputs, rechargedTo: user?.battery_capacity_seconds || BASE_BATTERY_SECONDS };
@@ -531,13 +633,14 @@ function createD1Repo(db) {
         );
         if (Number(row?.qty || 0) < qty) throw new HttpError("Missing pattern components.", 409);
       }
+      const createdAt = await currentIso();
       for (const [itemId, qty] of Object.entries(pattern.recipe)) await upsertInventory(userId, user.home_city_id, itemId, -qty);
-      await run("INSERT INTO user_patterns (user_id, pattern_id, created_at) VALUES (?, ?, ?)", userId, patternId, nowIso());
+      await run("INSERT INTO user_patterns (user_id, pattern_id, created_at) VALUES (?, ?, ?)", userId, patternId, createdAt);
       await run(
         "UPDATE users SET reputation = reputation + ?, battery_capacity_seconds = ?, updated_at = ? WHERE id = ?",
         pattern.repReward,
         Number(user.battery_capacity_seconds || BASE_BATTERY_SECONDS) + PATTERN_BATTERY_BONUS_SECONDS,
-        nowIso(),
+        createdAt,
         userId,
       );
       return { created: pattern };
@@ -550,6 +653,7 @@ function createD1Repo(db) {
       if (Number(owned?.qty || 0) < amount) throw new HttpError("Not enough local inventory.", 409);
       await upsertInventory(userId, cityId, itemId, -amount);
       const listing = { id: randomId("listing"), cityId, itemId, qty: amount, price: ask };
+      const createdAt = await currentIso();
       await run(
         "INSERT INTO market_listings (id, city_id, item_id, seller_user_id, qty, price, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         listing.id,
@@ -558,7 +662,7 @@ function createD1Repo(db) {
         userId,
         amount,
         ask,
-        nowIso(),
+        createdAt,
       );
       return { listing };
     },
@@ -569,7 +673,8 @@ function createD1Repo(db) {
       const cost = amount * bidPrice;
       const user = await first("SELECT credits FROM users WHERE id = ?", userId);
       if (Number(user?.credits || 0) < cost) throw new HttpError("Not enough credits.", 409);
-      await run("UPDATE users SET credits = credits - ?, updated_at = ? WHERE id = ?", cost, nowIso(), userId);
+      const createdAt = await currentIso();
+      await run("UPDATE users SET credits = credits - ?, updated_at = ? WHERE id = ?", cost, createdAt, userId);
       const bid = { id: randomId("bid"), cityId, itemId, qty: amount, price: bidPrice };
       await run(
         "INSERT INTO market_bids (id, city_id, item_id, buyer_user_id, qty, price, reserved_credits, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -580,7 +685,7 @@ function createD1Repo(db) {
         amount,
         bidPrice,
         cost,
-        nowIso(),
+        createdAt,
       );
       return { bid };
     },
@@ -592,8 +697,9 @@ function createD1Repo(db) {
       const cost = amount * Number(listing.price);
       const buyer = await first("SELECT credits FROM users WHERE id = ?", userId);
       if (Number(buyer?.credits || 0) < cost) throw new HttpError("Not enough credits.", 409);
-      await run("UPDATE users SET credits = credits - ?, updated_at = ? WHERE id = ?", cost, nowIso(), userId);
-      await run("UPDATE users SET credits = credits + ?, updated_at = ? WHERE id = ?", cost, nowIso(), listing.seller_user_id);
+      const at = await currentIso();
+      await run("UPDATE users SET credits = credits - ?, updated_at = ? WHERE id = ?", cost, at, userId);
+      await run("UPDATE users SET credits = credits + ?, updated_at = ? WHERE id = ?", cost, at, listing.seller_user_id);
       await upsertInventory(userId, listing.city_id, listing.item_id, amount);
       await run("UPDATE market_listings SET qty = qty - ? WHERE id = ?", amount, listingId);
       await run("DELETE FROM market_listings WHERE qty <= 0");
@@ -610,11 +716,38 @@ function createD1Repo(db) {
       const payout = amount * Number(bid.price);
       await upsertInventory(userId, bid.city_id, bid.item_id, -amount);
       await upsertInventory(bid.buyer_user_id, bid.city_id, bid.item_id, amount);
-      await run("UPDATE users SET credits = credits + ?, updated_at = ? WHERE id = ?", payout, nowIso(), userId);
+      const at = await currentIso();
+      await run("UPDATE users SET credits = credits + ?, updated_at = ? WHERE id = ?", payout, at, userId);
       await run("UPDATE market_bids SET qty = qty - ?, reserved_credits = reserved_credits - ? WHERE id = ?", amount, payout, bidId);
       await run("DELETE FROM market_bids WHERE qty <= 0");
       await recordTransaction(run, "sell", bid.city_id, bid.item_id, amount, bid.price, userId, bid.buyer_user_id);
       return { sold: amount, itemId: bid.item_id, price: bid.price };
+    },
+
+    async cancelListing(userId, listingId) {
+      const listing = await first("SELECT * FROM market_listings WHERE id = ? AND seller_user_id = ? AND qty > 0", listingId, userId);
+      if (!listing) throw new HttpError("Listing not found.", 404);
+      await upsertInventory(userId, listing.city_id, listing.item_id, Number(listing.qty || 0));
+      await run("DELETE FROM market_listings WHERE id = ?", listingId);
+      return { canceledListing: listingId, itemId: listing.item_id, qty: Number(listing.qty || 0) };
+    },
+
+    async cancelBid(userId, bidId) {
+      const bid = await first("SELECT * FROM market_bids WHERE id = ? AND buyer_user_id = ? AND qty > 0", bidId, userId);
+      if (!bid) throw new HttpError("Bid not found.", 404);
+      await run("UPDATE users SET credits = credits + ?, updated_at = ? WHERE id = ?", Number(bid.reserved_credits || 0), await currentIso(), userId);
+      await run("DELETE FROM market_bids WHERE id = ?", bidId);
+      return { canceledBid: bidId, refunded: Number(bid.reserved_credits || 0) };
+    },
+
+    async recycleInventory(userId, { cityId, itemId, qty = 1 }) {
+      const amount = Math.max(1, Math.floor(Number(qty || 1)));
+      const owned = await first("SELECT qty FROM inventories WHERE user_id = ? AND city_id = ? AND item_id = ?", userId, cityId, itemId);
+      if (Number(owned?.qty || 0) < amount) throw new HttpError("Not enough local inventory.", 409);
+      await upsertInventory(userId, cityId, itemId, -amount);
+      await run("UPDATE users SET credits = credits + ?, updated_at = ? WHERE id = ?", amount, await currentIso(), userId);
+      await recordTransaction(run, "recycle", cityId, itemId, amount, 1, userId, null);
+      return { recycled: amount, itemId, credits: amount };
     },
 
     async sendShipment(userId, { fromCityId, toCityId, vehicleItemId, cargo = [] }) {
@@ -634,8 +767,9 @@ function createD1Repo(db) {
         toCityId,
         vehicleItemId,
         cargo,
-        arrivalAt: new Date(Date.now() + route.baseHours * 3600000).toISOString(),
+        arrivalAt: new Date(await currentTimeMs() + route.baseHours * 3600000).toISOString(),
       };
+      const departedAt = await currentIso();
       await run(
         `INSERT INTO shipments
          (id, user_id, from_city_id, to_city_id, vehicle_item_id, cargo_json, status, depart_at, arrival_at, encounter_json, created_at, resolved_at)
@@ -646,18 +780,40 @@ function createD1Repo(db) {
         toCityId,
         vehicleItemId,
         JSON.stringify(cargo),
-        nowIso(),
+        departedAt,
         shipment.arrivalAt,
         JSON.stringify({ mode: "pve-lite", rolled: false }),
-        nowIso(),
+        departedAt,
       );
       return { shipment };
+    },
+
+    async advanceTime(hours = 0) {
+      const safeHours = Math.max(0, Math.min(24 * 30, Number(hours || 0)));
+      const nextOffset = await clockOffsetMs() + safeHours * 3600000;
+      await setClockOffsetMs(nextOffset);
+      return { advancedHours: safeHours, betaNow: nowIso(await currentTimeMs()), clockOffsetMs: nextOffset };
+    },
+
+    async grantTestBundle(userId, cityId = null) {
+      const user = await first("SELECT home_city_id FROM users WHERE id = ?", userId);
+      const targetCity = cityById(cityId || user?.home_city_id || DEFAULT_HOME_CITY).id;
+      const grants = [
+        { itemId: "common-runner", qty: 1 },
+        { itemId: "common-starter-a", qty: 2 },
+        { itemId: "common-starter-b", qty: 1 },
+        { itemId: "common-starter-c", qty: 1 },
+      ];
+      for (const grant of grants) await upsertInventory(userId, targetCity, grant.itemId, grant.qty);
+      await run("UPDATE users SET credits = credits + 150, updated_at = ? WHERE id = ?", await currentIso(), userId);
+      return { granted: grants, cityId: targetCity, credits: 150 };
     },
 
     async wipeBetaData() {
       for (const table of ["transactions", "shipments", "market_bids", "market_listings", "user_patterns", "fab_outputs", "fabs", "inventories", "sessions", "users"]) {
         await run(`DELETE FROM ${table}`);
       }
+      await setClockOffsetMs(0);
     },
   };
 }
@@ -689,9 +845,11 @@ export function createMemoryRepo() {
     patterns: new Map(),
     shipments: new Map(),
     transactions: [],
+    clockOffsetMs: 0,
   };
 
   const invKey = (userId, cityId, itemId) => `${userId}:${cityId}:${itemId}`;
+  const currentTimeMs = () => Date.now() + data.clockOffsetMs;
   const addInventory = (userId, cityId, itemId, qty) => {
     const key = invKey(userId, cityId, itemId);
     const next = (data.inventories.get(key) || 0) + qty;
@@ -701,6 +859,9 @@ export function createMemoryRepo() {
 
   const repo = {
     async ensureWorld() {},
+    async now() {
+      return currentTimeMs();
+    },
     async sessionByHash(tokenHash) {
       const session = data.sessions.get(tokenHash);
       if (!session || new Date(session.expiresAt).getTime() <= Date.now()) return null;
@@ -712,6 +873,7 @@ export function createMemoryRepo() {
       const token = crypto.randomUUID();
       const tokenHash = await sha256Hex(token);
       const safeHomeCity = cityById(homeCityId).id;
+      const createdAt = currentTimeMs();
       const user = {
         id: userId,
         displayName,
@@ -723,30 +885,57 @@ export function createMemoryRepo() {
         reputation: 0,
         batterySeconds: BASE_BATTERY_SECONDS,
         batteryCapacitySeconds: BASE_BATTERY_SECONDS,
+        lastTickAt: nowIso(createdAt),
       };
       data.users.set(userId, user);
       data.sessions.set(tokenHash, { userId, expiresAt: addDaysIso(SESSION_DAYS) });
       const fabId = randomId("fab");
-      data.fabs.set(fabId, { id: fabId, userId, type: "starter", cityId: safeHomeCity, rateGph: STARTER_FAB_RATE_GPH });
+      data.fabs.set(fabId, { id: fabId, userId, type: "starter", cityId: safeHomeCity, rateGph: STARTER_FAB_RATE_GPH, storedGrams: 0, lastTickAt: nowIso(createdAt) });
       for (const itemId of ["common-starter-a", "common-starter-a", "common-starter-b", "common-starter-c"]) {
         const id = randomId("output");
         data.outputs.set(id, { id, userId, fabId, cityId: safeHomeCity, itemId, hidden: true });
       }
       return { token, user, notice: BETA_WIPE_NOTICE };
     },
-    async tickUser() {},
+    async tickUser(userId, now) {
+      const user = data.users.get(userId);
+      if (!user) return;
+      const elapsedSeconds = Math.max(0, Math.floor((now - new Date(user.lastTickAt || nowIso(now)).getTime()) / 1000));
+      if (!elapsedSeconds) return;
+      const activeSeconds = Math.min(elapsedSeconds, Math.max(0, Number(user.batterySeconds || 0)));
+      user.batterySeconds = Math.max(0, Number(user.batterySeconds || 0) - activeSeconds);
+      user.lastTickAt = nowIso(now);
+      if (!activeSeconds) return;
+      for (const fab of data.fabs.values()) {
+        if (fab.userId !== userId) continue;
+        const grams = Number(fab.storedGrams || 0) + Number(fab.rateGph || STARTER_FAB_RATE_GPH) * (activeSeconds / 3600);
+        const rolls = Math.min(MAX_ROLLS_PER_TICK, Math.floor(grams));
+        fab.storedGrams = grams - Math.floor(grams);
+        fab.lastTickAt = nowIso(now);
+        for (let index = 0; index < rolls; index += 1) {
+          const id = randomId("output");
+          data.outputs.set(id, { id, userId, fabId: fab.id, cityId: fab.cityId, itemId: starterRollItemId(), hidden: true });
+        }
+      }
+    },
     async resolveShipments(userId, now) {
       for (const shipment of data.shipments.values()) {
         if (shipment.userId !== userId || shipment.status !== "in_transit" || new Date(shipment.arrivalAt).getTime() > now) continue;
+        const route = routeFor(shipment.fromCityId, shipment.toCityId);
+        const payout = merchantFreightPayout(shipment.cargo, route);
+        const encounter = pveLiteEncounterResult(shipment.cargo, route);
         addInventory(userId, shipment.toCityId, shipment.vehicleItemId, 1);
         for (const entry of shipment.cargo) addInventory(userId, shipment.toCityId, entry.itemId, entry.qty);
         shipment.status = "arrived";
+        shipment.resolvedAt = nowIso(now);
+        shipment.encounterJson = { ...encounter, freightPayout: payout };
+        data.users.get(userId).credits += payout;
       }
     },
     async stateForUser(userId) {
       const user = data.users.get(userId);
       return {
-        beta: { wipesExpected: true, notice: BETA_WIPE_NOTICE },
+        beta: { wipesExpected: true, notice: BETA_WIPE_NOTICE, now: nowIso(currentTimeMs()), clockOffsetMs: data.clockOffsetMs },
         user,
         cities,
         items,
@@ -839,8 +1028,12 @@ export function createMemoryRepo() {
     async sendShipment(userId, { fromCityId, toCityId, vehicleItemId, cargo = [] }) {
       if (!routeFor(fromCityId, toCityId)) throw new HttpError("Route not connected.", 409);
       if ((data.inventories.get(invKey(userId, fromCityId, vehicleItemId)) || 0) < 1) throw new HttpError("Vehicle not in source city.", 409);
+      for (const entry of cargo) {
+        if ((data.inventories.get(invKey(userId, fromCityId, entry.itemId)) || 0) < Number(entry.qty || 0)) throw new HttpError("Cargo not in source city.", 409);
+      }
       addInventory(userId, fromCityId, vehicleItemId, -1);
       for (const entry of cargo) addInventory(userId, fromCityId, entry.itemId, -entry.qty);
+      const route = routeFor(fromCityId, toCityId);
       const shipment = {
         id: randomId("ship"),
         userId,
@@ -849,17 +1042,59 @@ export function createMemoryRepo() {
         vehicleItemId,
         cargo,
         status: "in_transit",
-        arrivalAt: new Date(Date.now() + routeFor(fromCityId, toCityId).baseHours * 3600000).toISOString(),
+        departAt: nowIso(currentTimeMs()),
+        arrivalAt: new Date(currentTimeMs() + route.baseHours * 3600000).toISOString(),
         encounterJson: { mode: "pve-lite", rolled: false },
       };
       data.shipments.set(shipment.id, shipment);
       return { shipment };
+    },
+    async cancelListing(userId, listingId) {
+      const listing = data.listings.get(listingId);
+      if (!listing || listing.sellerUserId !== userId) throw new HttpError("Listing not found.", 404);
+      addInventory(userId, listing.cityId, listing.itemId, listing.qty);
+      data.listings.delete(listingId);
+      return { canceledListing: listingId, itemId: listing.itemId, qty: listing.qty };
+    },
+    async cancelBid(userId, bidId) {
+      const bid = data.bids.get(bidId);
+      if (!bid || bid.buyerUserId !== userId) throw new HttpError("Bid not found.", 404);
+      data.users.get(userId).credits += Number(bid.reservedCredits || 0);
+      data.bids.delete(bidId);
+      return { canceledBid: bidId, refunded: Number(bid.reservedCredits || 0) };
+    },
+    async recycleInventory(userId, { cityId, itemId, qty = 1 }) {
+      const amount = Math.max(1, Math.floor(Number(qty || 1)));
+      if ((data.inventories.get(invKey(userId, cityId, itemId)) || 0) < amount) throw new HttpError("Not enough local inventory.", 409);
+      addInventory(userId, cityId, itemId, -amount);
+      data.users.get(userId).credits += amount;
+      data.transactions.push({ type: "recycle", cityId, itemId, qty: amount, price: 1, sellerUserId: userId });
+      return { recycled: amount, itemId, credits: amount };
+    },
+    async advanceTime(hours = 0) {
+      const safeHours = Math.max(0, Math.min(24 * 30, Number(hours || 0)));
+      data.clockOffsetMs += safeHours * 3600000;
+      return { advancedHours: safeHours, betaNow: nowIso(currentTimeMs()), clockOffsetMs: data.clockOffsetMs };
+    },
+    async grantTestBundle(userId, cityId = null) {
+      const user = data.users.get(userId);
+      const targetCity = cityById(cityId || user?.homeCityId || DEFAULT_HOME_CITY).id;
+      const grants = [
+        { itemId: "common-runner", qty: 1 },
+        { itemId: "common-starter-a", qty: 2 },
+        { itemId: "common-starter-b", qty: 1 },
+        { itemId: "common-starter-c", qty: 1 },
+      ];
+      for (const grant of grants) addInventory(userId, targetCity, grant.itemId, grant.qty);
+      data.users.get(userId).credits += 150;
+      return { granted: grants, cityId: targetCity, credits: 150 };
     },
     async wipeBetaData() {
       Object.values(data).forEach((value) => {
         if (value instanceof Map) value.clear();
         else if (Array.isArray(value)) value.length = 0;
       });
+      data.clockOffsetMs = 0;
     },
     grantInventory(userId, cityId, itemId, qty) {
       addInventory(userId, cityId, itemId, qty);

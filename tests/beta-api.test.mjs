@@ -100,6 +100,57 @@ test("beta API reserves listings and lets another tester buy them", async () => 
   assert.equal(buyResult.body.state.inventories.find((row) => row.itemId === "common-starter-a").qty, 1);
 });
 
+test("beta API recycles inventory and cancels reserved market orders", async () => {
+  const repo = createMemoryRepo();
+  const tester = await createTester(repo, "Market Steward");
+  const session = await call(repo, "/api/session", { token: tester.token });
+  repo.grantInventory(session.body.user.id, "chrome-pier", "common-starter-a", 3);
+  repo.grantCredits(session.body.user.id, 100);
+
+  const listingResult = await call(repo, "/api/market/list", {
+    method: "POST",
+    token: tester.token,
+    body: { cityId: "chrome-pier", itemId: "common-starter-a", qty: 2, price: 12 },
+  });
+  assert.equal(listingResult.response.status, 201);
+
+  const canceledListing = await call(repo, "/api/market/cancel-listing", {
+    method: "POST",
+    token: tester.token,
+    body: { listingId: listingResult.body.listing.id },
+  });
+  assert.equal(canceledListing.response.status, 200);
+  assert.equal(canceledListing.body.canceledListing, listingResult.body.listing.id);
+  assert.equal(canceledListing.body.state.inventories.find((row) => row.itemId === "common-starter-a").qty, 3);
+
+  const bidResult = await call(repo, "/api/market/bid", {
+    method: "POST",
+    token: tester.token,
+    body: { cityId: "chrome-pier", itemId: "common-starter-b", qty: 2, price: 10 },
+  });
+  assert.equal(bidResult.response.status, 201);
+  assert.equal(bidResult.body.state.user.credits, 80);
+
+  const canceledBid = await call(repo, "/api/market/cancel-bid", {
+    method: "POST",
+    token: tester.token,
+    body: { bidId: bidResult.body.bid.id },
+  });
+  assert.equal(canceledBid.response.status, 200);
+  assert.equal(canceledBid.body.refunded, 20);
+  assert.equal(canceledBid.body.state.user.credits, 100);
+
+  const recycled = await call(repo, "/api/inventory/recycle", {
+    method: "POST",
+    token: tester.token,
+    body: { cityId: "chrome-pier", itemId: "common-starter-a", qty: 2 },
+  });
+  assert.equal(recycled.response.status, 200);
+  assert.equal(recycled.body.recycled, 2);
+  assert.equal(recycled.body.state.user.credits, 102);
+  assert.equal(recycled.body.state.inventories.find((row) => row.itemId === "common-starter-a").qty, 1);
+});
+
 test("beta API creates in-transit shipments with reserved vehicle and cargo", async () => {
   const repo = createMemoryRepo();
   const tester = await createTester(repo, "Merchant");
@@ -124,4 +175,73 @@ test("beta API creates in-transit shipments with reserved vehicle and cargo", as
   const state = await call(repo, "/api/state", { token: tester.token });
   assert.equal(state.body.inventories.length, 0);
   assert.equal(state.body.shipments.length, 1);
+});
+
+test("beta API globally advances time and resolves merchant shipment arrivals", async () => {
+  const repo = createMemoryRepo();
+  const tester = await createTester(repo, "Freight Runner");
+  const session = await call(repo, "/api/session", { token: tester.token });
+  repo.grantInventory(session.body.user.id, "chrome-pier", "common-runner", 1);
+  repo.grantInventory(session.body.user.id, "chrome-pier", "common-starter-a", 2);
+
+  const shipment = await call(repo, "/api/dispatch/send", {
+    method: "POST",
+    token: tester.token,
+    body: {
+      fromCityId: "chrome-pier",
+      toCityId: "lowline",
+      vehicleItemId: "common-runner",
+      cargo: [{ itemId: "common-starter-a", qty: 2 }],
+    },
+  });
+  assert.equal(shipment.response.status, 201);
+
+  const advanced = await call(repo, "/api/admin/time/advance", {
+    method: "POST",
+    token: tester.token,
+    admin: true,
+    body: { hours: 3 },
+  });
+  assert.equal(advanced.response.status, 200);
+  assert.equal(advanced.body.advancedHours, 3);
+  assert.ok(advanced.body.state.user.credits > 0);
+  assert.equal(advanced.body.state.inventories.find((row) => row.cityId === "lowline" && row.itemId === "common-runner").qty, 1);
+  assert.equal(advanced.body.state.inventories.find((row) => row.cityId === "lowline" && row.itemId === "common-starter-a").qty, 2);
+  const arrived = advanced.body.state.shipments.find((row) => row.id === shipment.body.shipment.id);
+  assert.equal(arrived.status, "arrived");
+  assert.equal(arrived.encounterJson.rolled, true);
+  assert.ok(arrived.encounterJson.note);
+  assert.ok(arrived.encounterJson.freightPayout > 0);
+});
+
+test("beta API uses one shared server clock for multiple accounts", async () => {
+  const repo = createMemoryRepo();
+  const alpha = await createTester(repo, "Clock Alpha");
+  const beta = await createTester(repo, "Clock Beta");
+
+  await call(repo, "/api/fabs/collect", {
+    method: "POST",
+    token: alpha.token,
+    body: { cityId: "chrome-pier" },
+  });
+  await call(repo, "/api/fabs/collect", {
+    method: "POST",
+    token: beta.token,
+    body: { cityId: "chrome-pier" },
+  });
+
+  const advanced = await call(repo, "/api/admin/time/advance", {
+    method: "POST",
+    token: alpha.token,
+    admin: true,
+    body: { hours: 1 },
+  });
+  assert.equal(advanced.response.status, 200);
+  assert.ok(advanced.body.state.pendingOutputs.length > 0);
+  assert.ok(advanced.body.state.beta.clockOffsetMs >= 3600000);
+
+  const betaState = await call(repo, "/api/state", { token: beta.token });
+  assert.equal(betaState.response.status, 200);
+  assert.ok(betaState.body.pendingOutputs.length > 0);
+  assert.ok(betaState.body.beta.clockOffsetMs >= 3600000);
 });

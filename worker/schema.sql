@@ -139,6 +139,12 @@ CREATE TABLE IF NOT EXISTS route_encounters (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS beta_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,

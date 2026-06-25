@@ -34,6 +34,7 @@ This file tracks decisions that should not be reopened casually.
 ## Economy
 
 - Markets should be listing/bid driven, not top-down percentage pricing.
+- Shared beta markets are player-only by default. NPC orders should be explicit test/admin content, not hidden market seeding.
 - Market UX should be city-first. The landing page should answer what can be sold, bought, or managed in the current city rather than dumping the full item catalog.
 - The Buy surface should use curated shelves and category drilldowns. Full order-book depth belongs in item detail views.
 - Market Sell is the main economy action surface for owned goods.
@@ -77,3 +78,11 @@ This file tracks decisions that should not be reopened casually.
 - Test Lab scenarios should be the first Admin surface for new feature testing.
 - Raw debug powers, balance tools, encounter editors, and save tools should remain available but grouped by purpose.
 - Player-facing wiki content should stay compact and stable. Prototype-era rules dumps belong in archive, feature briefs, design decisions, or system docs.
+
+## Shared Beta Runtime
+
+- When a beta account is connected, supported player screens should render from server state and call server actions instead of mutating browser-local prototype state.
+- Local prototype mode remains a design/testing fallback when no beta account is connected.
+- All connected beta accounts share one server beta clock.
+- Admin time tools advance that shared beta clock globally.
+- Beta progress is wipeable until schema, economy, and account rules stabilize.

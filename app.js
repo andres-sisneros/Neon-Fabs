@@ -2565,6 +2565,18 @@ function renderBetaClientPanel() {
       </details>
       <article class="admin-card admin-wide">
         <div class="blueprint-head">
+          <h3>Beta Loop Tools</h3>
+          <span class="pill">developer only</span>
+        </div>
+        <p class="muted">Use these to test the server-owned core loop. Time advances globally for every beta account.</p>
+        <label class="search-field"><span>Advance Hours</span><input id="betaAdvanceHours" type="number" min="0" step="0.25" value="4"></label>
+        <div class="button-row">
+          <button type="button" data-admin="beta-grant-bundle" ${beta.token ? "" : "disabled"}>Grant Test Bundle</button>
+          <button type="button" data-admin="beta-advance-time" ${beta.token ? "" : "disabled"}>Advance Global Time</button>
+        </div>
+      </article>
+      <article class="admin-card admin-wide">
+        <div class="blueprint-head">
           <h3>Last Server State</h3>
           <span class="pill">${loadedAt}</span>
         </div>
@@ -2931,6 +2943,425 @@ function betaShellShipments(betaState) {
   return `<article class="beta-shell-card"><h3>Shipments</h3>${rows || `<p class="muted">No server shipments yet.</p>`}</article>`;
 }
 
+function betaLoadingPanel(title, body = "Loading your connected beta account from the server.") {
+  const beta = betaRuntimeConfig();
+  const loading = betaRuntimeLoadPromise || beta.lastStatus === "loading";
+  mainPanel.innerHTML = `<section class="panel beta-loading-panel">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">Shared Beta</p>
+        <h2>${escapeHtml(beta.lastStatus === "error" ? "Could Not Load Beta Account" : title)}</h2>
+        <p class="muted">${escapeHtml(body)}</p>
+      </div>
+      <span class="pill">${loading ? "loading" : "server mode"}</span>
+    </div>
+    <div class="button-row">
+      <button type="button" data-admin="beta-load-state" ${beta.token ? "" : "disabled"}>${loading ? "Loading..." : "Retry Account Load"}</button>
+      <button type="button" data-view="admin">Open Admin</button>
+    </div>
+    ${beta.lastError ? `<p class="battery-empty">Could not load beta account. Open Admin to check the beta account.</p>` : ""}
+  </section>`;
+}
+
+function betaCurrentCityId(betaState) {
+  const cityIds = new Set((betaState?.cities || []).map((city) => city.id));
+  const user = betaState?.user || {};
+  const fallback = betaField(user, "currentCityId", "current_city_id") || betaField(user, "homeCityId", "home_city_id") || "chrome-pier";
+  return cityIds.has(state.district) ? state.district : fallback;
+}
+
+function betaInventoryRows(betaState, cityId = betaCurrentCityId(betaState)) {
+  return (betaState?.inventories || [])
+    .filter((row) => betaField(row, "cityId", "city_id") === cityId && Number(row.qty || 0) > 0)
+    .sort((a, b) => {
+      const itemA = betaItem(betaState, betaField(a, "itemId", "item_id"));
+      const itemB = betaItem(betaState, betaField(b, "itemId", "item_id"));
+      return rarityOrder.indexOf(itemB.rarity || "green") - rarityOrder.indexOf(itemA.rarity || "green")
+        || String(itemA.name || "").localeCompare(itemB.name || "");
+    });
+}
+
+function betaInventoryQty(betaState, cityId, itemId) {
+  const row = betaInventoryRows(betaState, cityId).find((entry) => betaField(entry, "itemId", "item_id") === itemId);
+  return Number(row?.qty || 0);
+}
+
+function betaOwnedPatternIds(betaState) {
+  return new Set((betaState?.ownedPatterns || []).map((row) => betaField(row, "patternId", "pattern_id")));
+}
+
+function betaPatternRecipe(pattern) {
+  const raw = pattern.recipe || pattern.recipe_json || pattern.recipeJson || {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      return {};
+    }
+  }
+  return raw && typeof raw === "object" ? raw : {};
+}
+
+function betaPatternReady(betaState, pattern, cityId) {
+  const recipe = betaPatternRecipe(pattern);
+  return Object.entries(recipe).every(([itemId, qty]) => betaInventoryQty(betaState, cityId, itemId) >= Number(qty || 0));
+}
+
+function betaListingOwnerId(listing) {
+  return betaField(listing, "sellerUserId", "seller_user_id");
+}
+
+function betaBidOwnerId(bid) {
+  return betaField(bid, "buyerUserId", "buyer_user_id");
+}
+
+function betaRouteFrom(route) {
+  return betaField(route, "fromCityId", "from_city_id") || route.from || "";
+}
+
+function betaRouteTo(route) {
+  return betaField(route, "toCityId", "to_city_id") || route.to || "";
+}
+
+function betaRouteDistance(route) {
+  return Number(betaField(route, "distanceMiles", "distance_miles") || route.distanceMiles || 0);
+}
+
+function betaConnectedRoutes(betaState, cityId) {
+  return (betaState?.routes || []).filter((route) => betaRouteFrom(route) === cityId);
+}
+
+function betaServerItemCard(betaState, row, options = {}) {
+  const itemId = betaField(row, "itemId", "item_id");
+  const item = betaItem(betaState, itemId);
+  const qty = Number(row.qty || 0);
+  return `<article class="item-card rarity-border-${item.rarity || "green"}">
+    <div class="card-row">
+      <strong class="item-name">${icon(item.category === "vehicle" ? "vehicle" : "data", item.rarity || "green")} ${escapeHtml(item.name || item.id)}</strong>
+      <span class="pill">x${qty.toLocaleString()}</span>
+    </div>
+    <p class="muted">${escapeHtml(item.category || "item")} - ${formatCredits(item.value || 1)}</p>
+    ${options.actions || ""}
+  </article>`;
+}
+
+function renderBetaProfile() {
+  ensureBetaRuntimeState();
+  const betaState = betaRuntimeState();
+  if (!betaState) {
+    betaLoadingPanel("Loading Profile", "Server mode uses the shared beta account for profile, inventory, market, and dispatch.");
+    return;
+  }
+  const user = betaState.user || {};
+  const userName = betaField(user, "displayName", "display_name") || "Beta Tester";
+  const homeCityId = betaField(user, "homeCityId", "home_city_id");
+  const cityId = betaCurrentCityId(betaState);
+  const pendingByCity = betaPendingOutputsByCity(betaState);
+  const localInventory = betaInventoryRows(betaState, cityId).reduce((sum, row) => sum + Number(row.qty || 0), 0);
+  const ownedPatterns = betaOwnedPatternIds(betaState).size;
+  const firstReadyPattern = (betaState.patterns || []).find((pattern) => !betaOwnedPatternIds(betaState).has(pattern.id) && betaPatternReady(betaState, pattern, homeCityId));
+  const betaNow = betaState.beta?.now ? betaFormatDate(betaState.beta.now) : "server clock";
+  mainPanel.innerHTML = `<div class="profile-layout beta-player-view">
+    <section class="panel profile-hero compact-hero">
+      <div class="blueprint-head">
+        <div>
+          <p class="eyebrow">Connected Beta Account</p>
+          <h2>${escapeHtml(userName)}</h2>
+          <p class="muted">Server-owned loop active. All connected beta accounts share the same beta clock.</p>
+        </div>
+        <span class="pill">${escapeHtml(betaNow)}</span>
+      </div>
+      ${betaState.beta?.notice ? `<p class="battery-empty">${escapeHtml(betaState.beta.notice)}</p>` : ""}
+      <div class="fab-metrics">
+        <div class="side-metric"><span>Credits</span><strong>${formatCredits(user.credits || 0)}</strong></div>
+        <div class="side-metric"><span>Reputation</span><strong>${Number(user.reputation || 0).toLocaleString()}</strong></div>
+        <div class="side-metric"><span>Home</span><strong>${escapeHtml(betaCityName(betaState, homeCityId))}</strong></div>
+        <div class="side-metric"><span>Viewing</span><strong>${escapeHtml(betaCityName(betaState, cityId))}</strong></div>
+        <div class="side-metric"><span>Print Bay</span><strong>${Number(pendingByCity[cityId] || 0).toLocaleString()} ready here</strong></div>
+        <div class="side-metric"><span>Local Storage</span><strong>${localInventory.toLocaleString()} items</strong></div>
+      </div>
+      <div class="button-row">
+        <button type="button" data-beta-nav="fabs">Open Print Bay</button>
+        <button type="button" data-beta-nav="inventory">Inventory</button>
+        <button type="button" data-beta-nav="melds">Patterns</button>
+        <button type="button" data-beta-nav="shop">Market</button>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="blueprint-head">
+        <div>
+          <h2>Next Useful Systems</h2>
+          <p class="muted">No suggested quest rail here: just the server loop surfaces that are live right now.</p>
+        </div>
+        <span class="pill">beta core</span>
+      </div>
+      <div class="item-grid">
+        <article class="item-card"><h3>Patterns</h3><p class="muted">${ownedPatterns} created. ${firstReadyPattern ? `${escapeHtml(firstReadyPattern.name)} is ready in your home city.` : "Collect and trade ingredients to create more."}</p><button type="button" data-beta-nav="melds">Open Patterns</button></article>
+        <article class="item-card"><h3>Market</h3><p class="muted">${(betaState.market?.listings || []).length} listings and ${(betaState.market?.bids || []).length} bids across all beta players.</p><button type="button" data-beta-nav="shop">Open Market</button></article>
+        <article class="item-card"><h3>Dispatch</h3><p class="muted">Merchant shipping is live in beta. Routejack and full combat stay parked for now.</p><button type="button" data-beta-nav="shipments">Open Dispatch</button></article>
+      </div>
+    </section>
+  </div>`;
+}
+
+function renderBetaInventory() {
+  ensureBetaRuntimeState();
+  const betaState = betaRuntimeState();
+  if (!betaState) {
+    betaLoadingPanel("Loading Inventory");
+    return;
+  }
+  const cityId = betaCurrentCityId(betaState);
+  const city = (betaState.cities || []).find((entry) => entry.id === cityId) || {};
+  const rows = betaInventoryRows(betaState, cityId);
+  const total = rows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
+  const search = String(state.inventorySearch || "").trim().toLowerCase();
+  const visibleRows = rows.filter((row) => !search || betaItem(betaState, betaField(row, "itemId", "item_id")).name.toLowerCase().includes(search));
+  const cards = visibleRows.map((row) => {
+    const itemId = betaField(row, "itemId", "item_id");
+    return betaServerItemCard(betaState, row, {
+      actions: `<div class="button-row">
+        <button type="button" data-beta-nav="shop" data-beta-market-item="${escapeHtml(itemId)}">Open In Market</button>
+        <button type="button" class="secondary" data-beta-nav="shipments" ${betaItem(betaState, itemId).category === "vehicle" ? "disabled" : ""}>Send</button>
+      </div>`,
+    });
+  }).join("");
+  mainPanel.innerHTML = `<section class="panel beta-player-view">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">City Storage</p>
+        <h2>${escapeHtml(betaCityName(betaState, cityId))} Inventory</h2>
+      </div>
+      <span class="pill">${total.toLocaleString()} / ${Number(city.inventoryLimit || 96).toLocaleString()}</span>
+    </div>
+    <label class="search-field"><span>Search</span><input id="inventorySearch" type="search" value="${escapeHtml(state.inventorySearch || "")}" placeholder="Find an item"></label>
+    <div class="item-grid compact-inventory-grid">${cards || `<p class="muted">No server items stored in this city.</p>`}</div>
+  </section>`;
+}
+
+function renderBetaMelds() {
+  ensureBetaRuntimeState();
+  const betaState = betaRuntimeState();
+  if (!betaState) {
+    betaLoadingPanel("Loading Patterns");
+    return;
+  }
+  const homeCityId = betaField(betaState.user, "homeCityId", "home_city_id");
+  const owned = betaOwnedPatternIds(betaState);
+  const cards = (betaState.patterns || []).map((pattern) => {
+    const recipe = betaPatternRecipe(pattern);
+    const ready = betaPatternReady(betaState, pattern, homeCityId);
+    const complete = owned.has(pattern.id);
+    const parts = Object.entries(recipe).map(([itemId, needed]) => {
+      const ownedQty = betaInventoryQty(betaState, homeCityId, itemId);
+      const missing = Math.max(0, Number(needed || 0) - ownedQty);
+      const item = betaItem(betaState, itemId);
+      return `<span class="ingredient-token ${missing ? "missing" : "owned"}">${icon("data", item.rarity || "green")} ${escapeHtml(item.name)} ${missing ? `missing ${missing}` : "ready"}</span>`;
+    }).join("");
+    return `<article class="meld-card rarity-border-${pattern.rarity || "green"} ${complete ? "complete" : ready ? "ready" : ""}">
+      <div class="card-row">
+        <h3>${escapeHtml(pattern.name)}</h3>
+        <span class="pill">${complete ? "created" : ready ? "ready" : "missing parts"}</span>
+      </div>
+      <div class="ingredient-strip">${parts}</div>
+      <p class="muted">Home city only: ${escapeHtml(betaCityName(betaState, homeCityId))}. Reward: ${Number(pattern.repReward || pattern.rep_reward || 0).toLocaleString()} reputation.</p>
+      <button type="button" data-beta-create-pattern="${escapeHtml(pattern.id)}" ${ready && !complete ? "" : "disabled"}>${complete ? "Already Created" : "Create Pattern"}</button>
+    </article>`;
+  }).join("");
+  mainPanel.innerHTML = `<section class="panel beta-player-view">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">Reputation Patterns</p>
+        <h2>Patterns</h2>
+      </div>
+      <span class="pill">${owned.size.toLocaleString()} created</span>
+    </div>
+    <div class="meld-grid">${cards || `<p class="muted">No server patterns available yet.</p>`}</div>
+  </section>`;
+}
+
+function renderBetaMarket() {
+  ensureBetaRuntimeState();
+  const betaState = betaRuntimeState();
+  if (!betaState) {
+    betaLoadingPanel("Loading Market");
+    return;
+  }
+  const cityId = betaCurrentCityId(betaState);
+  const userId = betaState.user?.id || "";
+  const mode = state.marketMode || "buy";
+  const cityInventory = betaInventoryRows(betaState, cityId);
+  const listings = (betaState.market?.listings || []).filter((listing) => betaField(listing, "cityId", "city_id") === cityId && Number(listing.qty || 0) > 0);
+  const bids = (betaState.market?.bids || []).filter((bid) => betaField(bid, "cityId", "city_id") === cityId && Number(bid.qty || 0) > 0);
+  const marketTabs = `<div class="tab-row">
+    <button type="button" data-market-mode="buy" class="${mode === "buy" ? "active" : ""}">Buy</button>
+    <button type="button" data-market-mode="sell" class="${mode === "sell" ? "active" : ""}">Sell</button>
+    <button type="button" data-market-mode="orders" class="${mode === "orders" ? "active" : ""}">Orders</button>
+  </div>`;
+  let body = "";
+  if (mode === "sell") {
+    const rows = cityInventory.map((row) => {
+      const itemId = betaField(row, "itemId", "item_id");
+      const item = betaItem(betaState, itemId);
+      const bestBid = bids.filter((bid) => betaField(bid, "itemId", "item_id") === itemId).sort((a, b) => Number(b.price || 0) - Number(a.price || 0))[0];
+      const actions = `<div class="button-row">
+        <button type="button" data-beta-sell-bid="${bestBid?.id || ""}" ${bestBid ? "" : "disabled"}>Sell 1${bestBid ? ` - ${formatCredits(bestBid.price)}` : ""}</button>
+        <button type="button" class="secondary" data-beta-list-item="${escapeHtml(itemId)}">List 1 - ${formatCredits(item.value || 1)}</button>
+        <button type="button" class="secondary" data-beta-recycle-item="${escapeHtml(itemId)}">Recycle 1</button>
+      </div>`;
+      return betaServerItemCard(betaState, row, { actions });
+    }).join("");
+    body = `<div class="market-workbench"><div class="item-grid">${rows || `<p class="muted">No current-city inventory to sell, list, or recycle.</p>`}</div></div>`;
+  } else if (mode === "orders") {
+    const ownListings = listings.filter((listing) => betaListingOwnerId(listing) === userId);
+    const ownBids = bids.filter((bid) => betaBidOwnerId(bid) === userId);
+    const listingRows = ownListings.map((listing) => `<article class="item-card">
+      <div class="card-row">${betaItemChip(betaState, betaField(listing, "itemId", "item_id"))}<span class="pill">x${Number(listing.qty || 0)}</span></div>
+      <p class="muted">${formatCredits(listing.price || 0)} each in ${escapeHtml(betaCityName(betaState, cityId))}</p>
+      <button type="button" data-beta-cancel-listing="${escapeHtml(listing.id)}">Cancel Listing</button>
+    </article>`).join("");
+    const bidRows = ownBids.map((bid) => `<article class="item-card">
+      <div class="card-row">${betaItemChip(betaState, betaField(bid, "itemId", "item_id"))}<span class="pill">x${Number(bid.qty || 0)}</span></div>
+      <p class="muted">${formatCredits(bid.price || 0)} each reserved.</p>
+      <button type="button" data-beta-cancel-bid="${escapeHtml(bid.id)}">Cancel Bid</button>
+    </article>`).join("");
+    body = `<div class="beta-shell-split"><article class="beta-shell-card"><h3>Your Listings</h3><div class="item-grid">${listingRows || `<p class="muted">No active listings here.</p>`}</div></article><article class="beta-shell-card"><h3>Your Bids</h3><div class="item-grid">${bidRows || `<p class="muted">No active bids here.</p>`}</div></article></div>`;
+  } else {
+    const listingRows = listings.map((listing) => {
+      const itemId = betaField(listing, "itemId", "item_id");
+      const isOwn = betaListingOwnerId(listing) === userId;
+      return `<article class="market-listing-card item-card">
+        <div class="card-row">${betaItemChip(betaState, itemId)}<span class="pill">x${Number(listing.qty || 0)}</span></div>
+        <p class="muted">${formatCredits(listing.price || 0)} each${isOwn ? " - yours" : ""}</p>
+        <button type="button" data-beta-buy-listing="${escapeHtml(listing.id)}" ${isOwn ? "disabled" : ""}>Buy 1</button>
+      </article>`;
+    }).join("");
+    const bidableItems = (betaState.items || []).slice(0, 12).map((item) => `<article class="item-card">
+      <div class="card-row"><strong class="item-name">${icon(item.category === "vehicle" ? "vehicle" : "data", item.rarity || "green")} ${escapeHtml(item.name)}</strong><span class="pill">${formatCredits(item.value || 1)}</span></div>
+      <button type="button" class="secondary" data-beta-bid-item="${escapeHtml(item.id)}">Bid 1 - ${formatCredits(item.value || 1)}</button>
+    </article>`).join("");
+    body = `<div class="market-shelves">
+      <section><h3>Listings In ${escapeHtml(betaCityName(betaState, cityId))}</h3><div class="item-grid">${listingRows || `<p class="muted">No player listings in this city yet.</p>`}</div></section>
+      <section><h3>Post A Simple Bid</h3><div class="item-grid">${bidableItems}</div></section>
+    </div>`;
+  }
+  mainPanel.innerHTML = `<section class="panel beta-player-view">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">Player Market</p>
+        <h2>${escapeHtml(betaCityName(betaState, cityId))} Market</h2>
+      </div>
+      <span class="pill">player-only beta</span>
+    </div>
+    ${marketTabs}
+    ${body}
+  </section>`;
+}
+
+function renderBetaDistricts() {
+  ensureBetaRuntimeState();
+  const betaState = betaRuntimeState();
+  if (!betaState) {
+    betaLoadingPanel("Loading Routes");
+    return;
+  }
+  const cityId = betaCurrentCityId(betaState);
+  const cityCards = (betaState.cities || []).map((city) => {
+    const outgoing = betaConnectedRoutes(betaState, city.id);
+    return `<article class="item-card ${city.id === cityId ? "active-card" : ""}">
+      <div class="card-row"><h3>${escapeHtml(city.name)}</h3><span class="pill">${Number(city.inventoryLimit || 96)} slots</span></div>
+      <p class="muted">${outgoing.length ? outgoing.map((route) => `${betaCityName(betaState, betaRouteTo(route))} ${betaRouteDistance(route)}mi`).join(", ") : "No outgoing routes."}</p>
+      <button type="button" data-beta-view-city="${escapeHtml(city.id)}">${city.id === cityId ? "Viewing" : "View City"}</button>
+    </article>`;
+  }).join("");
+  mainPanel.innerHTML = `<section class="panel beta-player-view">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">Map</p>
+        <h2>Cities & Routes</h2>
+      </div>
+      <span class="pill">server routes</span>
+    </div>
+    ${typeof renderRouteMap === "function" ? renderRouteMap() : ""}
+    <div class="item-grid">${cityCards}</div>
+  </section>`;
+}
+
+function betaDispatchDefaults(betaState, cityId) {
+  const routes = betaConnectedRoutes(betaState, cityId);
+  if (!routes.some((route) => betaRouteTo(route) === state.shipmentDestination)) {
+    state.shipmentDestination = betaRouteTo(routes[0] || {}) || "";
+  }
+  const vehicles = betaInventoryRows(betaState, cityId).filter((row) => betaItem(betaState, betaField(row, "itemId", "item_id")).category === "vehicle");
+  if (!vehicles.some((row) => betaField(row, "itemId", "item_id") === state.shipmentVehicle)) {
+    state.shipmentVehicle = betaField(vehicles[0], "itemId", "item_id") || "";
+  }
+  const cargoRows = betaInventoryRows(betaState, cityId).filter((row) => betaItem(betaState, betaField(row, "itemId", "item_id")).category !== "vehicle");
+  if (!cargoRows.some((row) => betaField(row, "itemId", "item_id") === state.shipmentCargo)) {
+    state.shipmentCargo = betaField(cargoRows[0], "itemId", "item_id") || "";
+  }
+  return { routes, vehicles, cargoRows };
+}
+
+function renderBetaShipments() {
+  ensureBetaRuntimeState();
+  const betaState = betaRuntimeState();
+  if (!betaState) {
+    betaLoadingPanel("Loading Dispatch");
+    return;
+  }
+  const cityId = betaCurrentCityId(betaState);
+  const { routes, vehicles, cargoRows } = betaDispatchDefaults(betaState, cityId);
+  const routeOptions = routes.map((route) => `<option value="${betaRouteTo(route)}" ${state.shipmentDestination === betaRouteTo(route) ? "selected" : ""}>${betaCityName(betaState, betaRouteTo(route))} - ${betaRouteDistance(route)}mi</option>`).join("");
+  const vehicleOptions = vehicles.map((row) => {
+    const itemId = betaField(row, "itemId", "item_id");
+    return `<option value="${itemId}" ${state.shipmentVehicle === itemId ? "selected" : ""}>${betaItem(betaState, itemId).name} x${Number(row.qty || 0)}</option>`;
+  }).join("");
+  const cargoOptions = cargoRows.map((row) => {
+    const itemId = betaField(row, "itemId", "item_id");
+    return `<option value="${itemId}" ${state.shipmentCargo === itemId ? "selected" : ""}>${betaItem(betaState, itemId).name} x${Number(row.qty || 0)}</option>`;
+  }).join("");
+  const cargoQty = Math.max(1, Number(state.shipmentCargoQty || 1));
+  const canSend = routes.length && vehicles.length && cargoRows.length;
+  const shipmentRows = (betaState.shipments || []).map((shipment) => {
+    const encounter = shipment.encounterJson || shipment.encounter_json || {};
+    const parsedEncounter = typeof encounter === "string" ? (() => { try { return JSON.parse(encounter); } catch (error) { return {}; } })() : encounter;
+    return `<article class="item-card">
+      <div class="card-row"><h3>${escapeHtml(betaCityName(betaState, betaField(shipment, "fromCityId", "from_city_id")))} -> ${escapeHtml(betaCityName(betaState, betaField(shipment, "toCityId", "to_city_id")))}</h3><span class="pill">${escapeHtml(shipment.status || "unknown")}</span></div>
+      <p class="muted">${escapeHtml(betaItem(betaState, betaField(shipment, "vehicleItemId", "vehicle_item_id")).name)} arrives ${escapeHtml(betaFormatDate(betaField(shipment, "arrivalAt", "arrival_at")))}.</p>
+      ${parsedEncounter?.note ? `<p class="muted">${escapeHtml(parsedEncounter.note)}${parsedEncounter.freightPayout ? ` Freight paid: ${formatCredits(parsedEncounter.freightPayout)}.` : ""}</p>` : ""}
+    </article>`;
+  }).join("");
+  mainPanel.innerHTML = `<section class="panel beta-player-view">
+    <div class="blueprint-head">
+      <div>
+        <p class="eyebrow">Merchant Shipping</p>
+        <h2>${escapeHtml(betaCityName(betaState, cityId))} Dispatch</h2>
+      </div>
+      <span class="pill">PvE-lite beta</span>
+    </div>
+    <div class="dispatch-grid">
+      <article class="dispatch-choice-card">
+        <h3>Send Cargo</h3>
+        <label class="select-field"><span>Route</span><select id="betaShipmentDestination">${routeOptions}</select></label>
+        <label class="select-field"><span>Vehicle</span><select id="betaShipmentVehicle">${vehicleOptions}</select></label>
+        <label class="select-field"><span>Cargo</span><select id="betaShipmentCargo">${cargoOptions}</select></label>
+        <label class="search-field"><span>Quantity</span><input id="betaShipmentCargoQty" type="number" min="1" value="${cargoQty}"></label>
+        <button type="button" data-beta-send-shipment ${canSend ? "" : "disabled"}>Send Shipment</button>
+        ${canSend ? "" : `<p class="muted">Grant a beta test bundle or move a vehicle and cargo into this city first.</p>`}
+      </article>
+      <article class="dispatch-choice-card">
+        <h3>Unsupported In This Slice</h3>
+        <p class="muted">Routejack, bounty hunting, full auto-battler combat, equipment, boosts, and fab shop purchases are intentionally out of this server pass.</p>
+      </article>
+    </div>
+    <section style="margin-top:14px">
+      <div class="blueprint-head"><h2>Server Shipments</h2><span class="pill">${(betaState.shipments || []).length}</span></div>
+      <div class="item-grid">${shipmentRows || `<p class="muted">No server shipments yet.</p>`}</div>
+    </section>
+  </section>`;
+}
+
 function renderBetaShell() {
   const beta = window.NeonBetaClient?.readConfig?.() || {};
   const betaState = betaStateSnapshot();
@@ -2970,7 +3401,7 @@ function renderBetaShell() {
         <div>
           <p class="eyebrow">Shared Beta - Server Runtime</p>
           <h2>${escapeHtml(userName)}</h2>
-          <p class="muted">Connected beta account loaded. Print Bay collection is live; other gameplay actions are still local or read-only.</p>
+          <p class="muted">Connected beta account loaded. Core loop actions are server-owned for this beta slice; unsupported systems stay parked until later passes.</p>
         </div>
         <span class="pill">${escapeHtml(beta.lastLoadedAt ? new Date(beta.lastLoadedAt).toLocaleString() : "loaded")}</span>
       </div>
@@ -3351,6 +3782,31 @@ async function handleBetaAdmin(action) {
     render();
     return true;
   }
+  if (action === "beta-grant-bundle") {
+    addFeed("Shared Beta", "granting test bundle", "data");
+    render();
+    try {
+      await window.NeonBetaClient.grantBundle?.(state.district);
+      addFeed("Shared Beta", "test bundle granted", "chip");
+    } catch (error) {
+      addFeed("Shared Beta", "test bundle failed", "data");
+    }
+    render();
+    return true;
+  }
+  if (action === "beta-advance-time") {
+    const hours = Number(document.querySelector("#betaAdvanceHours")?.value || 0);
+    addFeed("Shared Beta", `advancing ${hours}h globally`, "data");
+    render();
+    try {
+      await window.NeonBetaClient.advanceTime?.(hours);
+      addFeed("Shared Beta", "global beta time advanced", "chip");
+    } catch (error) {
+      addFeed("Shared Beta", "time advance failed", "data");
+    }
+    render();
+    return true;
+  }
   if (action === "beta-create-tester") {
     const form = readBetaClientForm();
     if (!String(form.adminToken || "").trim()) {
@@ -3404,6 +3860,12 @@ async function handleBetaCollectOutput(cityId = state.district) {
 function renderMainPanel() {
   if (state.activeView === "admin") renderAdmin();
   else if (state.activeView === "beta-shell") renderBetaShell();
+  else if (betaRuntimeActive() && (state.activeView === "home" || state.activeView === "profile")) renderBetaProfile();
+  else if (betaRuntimeActive() && (state.activeView === "things" || state.activeView === "inventory")) renderBetaInventory();
+  else if (betaRuntimeActive() && state.activeView === "melds") renderBetaMelds();
+  else if (betaRuntimeActive() && state.activeView === "shop") renderBetaMarket();
+  else if (betaRuntimeActive() && state.activeView === "shipments") renderBetaShipments();
+  else if (betaRuntimeActive() && state.activeView === "cities") renderBetaDistricts();
   else if (state.activeView === "contracts") renderContracts();
   else if (state.activeView === "home" || state.activeView === "profile") renderProfile();
   else if (state.activeView === "findings" || state.activeView === "fabs") renderFindings();
@@ -3691,7 +4153,10 @@ function syncActiveButtons() {
     const view = viewAlias(state.activeView);
     const buttonView = viewAlias(button.dataset.view);
     const isActive = buttonView === view;
-    const unlocked = featureUnlocked(button.dataset.view);
+    const betaCoreViews = new Set(["admin", "beta-shell", "profile", "home", "fabs", "findings", "inventory", "things", "melds", "shop", "cities", "shipments", "wiki"]);
+    const unlocked = betaRuntimeActive()
+      ? betaCoreViews.has(buttonView) || betaCoreViews.has(button.dataset.view)
+      : featureUnlocked(button.dataset.view);
     button.hidden = !unlocked && !isActive;
     button.disabled = !unlocked && !isActive;
     button.classList.toggle("active", buttonView === view);
@@ -3962,7 +4427,105 @@ async function handleAdmin(action) {
   render();
 }
 
-document.body.addEventListener("click", (event) => {
+async function handleBetaGameClick(button) {
+  if (!betaRuntimeActive() || state.activeView === "admin" || state.activeView === "beta-shell") return false;
+  const betaState = betaRuntimeState();
+  if (!betaState) return false;
+  const cityId = betaCurrentCityId(betaState);
+  const itemValue = (itemId) => Math.max(1, Number(betaItem(betaState, itemId).value || 1));
+  const runServerAction = async (feedTitle, pendingText, successText, action) => {
+    addFeed(feedTitle, pendingText, "data");
+    render();
+    try {
+      await action();
+      addFeed(feedTitle, successText, "chip");
+    } catch (error) {
+      addFeed(feedTitle, "server action failed", "data");
+    }
+    render();
+    return true;
+  };
+
+  if (button.dataset.betaCreatePattern) {
+    const patternId = button.dataset.betaCreatePattern;
+    return runServerAction("Patterns", "creating pattern", "pattern created", () => window.NeonBetaClient.createPattern(patternId));
+  }
+  if (button.dataset.betaListItem) {
+    const itemId = button.dataset.betaListItem;
+    return runServerAction("Market", "listing item", "listing posted", () => window.NeonBetaClient.createListing({
+      cityId,
+      itemId,
+      qty: 1,
+      price: itemValue(itemId),
+    }));
+  }
+  if (button.dataset.betaBidItem) {
+    const itemId = button.dataset.betaBidItem;
+    return runServerAction("Market", "placing bid", "bid posted", () => window.NeonBetaClient.createBid({
+      cityId,
+      itemId,
+      qty: 1,
+      price: itemValue(itemId),
+    }));
+  }
+  if (button.dataset.betaBuyListing) {
+    return runServerAction("Market", "buying listing", "item purchased", () => window.NeonBetaClient.buyListing(button.dataset.betaBuyListing, 1));
+  }
+  if (button.dataset.betaSellBid) {
+    const bidId = button.dataset.betaSellBid;
+    if (!bidId) return true;
+    return runServerAction("Market", "selling to bid", "item sold", () => window.NeonBetaClient.sellToBid(bidId, 1));
+  }
+  if (button.dataset.betaRecycleItem) {
+    const itemId = button.dataset.betaRecycleItem;
+    return runServerAction("Inventory", "recycling item", "item recycled", () => window.NeonBetaClient.recycleInventory({ cityId, itemId, qty: 1 }));
+  }
+  if (button.dataset.betaCancelListing) {
+    return runServerAction("Market", "canceling listing", "listing canceled", () => window.NeonBetaClient.cancelListing(button.dataset.betaCancelListing));
+  }
+  if (button.dataset.betaCancelBid) {
+    return runServerAction("Market", "canceling bid", "bid canceled", () => window.NeonBetaClient.cancelBid(button.dataset.betaCancelBid));
+  }
+  if (button.dataset.betaViewCity) {
+    state.district = button.dataset.betaViewCity;
+    render();
+    return true;
+  }
+  if (button.dataset.betaSendShipment !== undefined) {
+    const fromCityId = cityId;
+    const toCityId = document.querySelector("#betaShipmentDestination")?.value || state.shipmentDestination;
+    const vehicleItemId = document.querySelector("#betaShipmentVehicle")?.value || state.shipmentVehicle;
+    const cargoItemId = document.querySelector("#betaShipmentCargo")?.value || state.shipmentCargo;
+    const available = betaInventoryQty(betaState, fromCityId, cargoItemId);
+    const qty = Math.max(1, Math.min(available, Number(document.querySelector("#betaShipmentCargoQty")?.value || state.shipmentCargoQty || 1)));
+    if (!toCityId || !vehicleItemId || !cargoItemId || !qty) {
+      addFeed("Dispatch", "choose a route, vehicle, and cargo", "data");
+      render();
+      return true;
+    }
+    return runServerAction("Dispatch", "sending shipment", "shipment launched", () => window.NeonBetaClient.sendShipment({
+      fromCityId,
+      toCityId,
+      vehicleItemId,
+      cargo: [{ itemId: cargoItemId, qty }],
+    }));
+  }
+  if (button.dataset.betaMarketItem) {
+    state.marketMode = "sell";
+    state.marketSearch = betaItem(betaState, button.dataset.betaMarketItem).name;
+    state.activeView = "shop";
+    render();
+    return true;
+  }
+  if (button.dataset.betaNav) {
+    state.activeView = button.dataset.betaNav;
+    render();
+    return true;
+  }
+  return false;
+}
+
+document.body.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   if (!button) return;
   if (button.dataset.action === "confirm-accept") {
@@ -3981,6 +4544,7 @@ document.body.addEventListener("click", (event) => {
     executeActionSheet(button.dataset.sheetAction);
     return;
   }
+  if (await handleBetaGameClick(button)) return;
   if (button.dataset.openMeldActions) {
     openActionSheet("meld-ingredient", { itemName: button.dataset.openMeldActions });
     return;
@@ -4305,6 +4869,14 @@ document.body.addEventListener("click", (event) => {
 });
 
 document.body.addEventListener("change", (event) => {
+  if (betaRuntimeActive() && ["betaShipmentDestination", "betaShipmentVehicle", "betaShipmentCargo", "betaShipmentCargoQty"].includes(event.target.id)) {
+    if (event.target.id === "betaShipmentDestination") state.shipmentDestination = event.target.value;
+    if (event.target.id === "betaShipmentVehicle") state.shipmentVehicle = event.target.value;
+    if (event.target.id === "betaShipmentCargo") state.shipmentCargo = event.target.value;
+    if (event.target.id === "betaShipmentCargoQty") state.shipmentCargoQty = Math.max(1, Math.floor(Number(event.target.value || 1)));
+    render();
+    return;
+  }
   if (event.target.id === "marketSort") {
     state.marketSort = event.target.value;
     render();
